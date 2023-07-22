@@ -2,29 +2,24 @@
 
 #include <array>
 #include <vector>
-#include <cstdint>
+#include <string>
+#include <filesystem>
 
 #include "Utils.h"
 
-struct LatticeSpecification {
-	uint32_t sizeX, sizeY;
-	
-	double lengthUnit; //[m]
-	double timeStep;   //[s]
-	double massUnit;   //[kg]
-};
-
 struct Node {
 	//Distribution Weights:
-	std::array<double, 9> weights;
+	std::array<double, 9> Weights, TmpWeights;
 	//Macroscopic Quantities:
-	double density;
-	Utils::Vec2 velocity;
+	double Density;
+	Utils::Vec2 Velocity;
+	//Solid nodes are excluded from dynamics simulation
+	bool IsSolid = false;
 
 	//Recalculates macroscopic denisty and velocity
 	void UpdateMacroscopic();
 
-	//Calculates equlibrium weight in direction 'idx'
+	//Calculates equlibrium weight in direction labeled by 'idx'
 	double Equlibrium(double base_speed, uint32_t idx);
 
 	//Velocities in 9 base directions (zero, four axis aligned, four diagonal)
@@ -42,6 +37,14 @@ struct Node {
 	};
 };
 
+struct LatticeSpecification {
+	size_t sizeX, sizeY;
+
+	double LengthUnit; //[m]
+	double TimeStep;   //[s]
+	double MassUnit;   //[kg]
+};
+
 class Lattice {
 public:
 	Lattice(LatticeSpecification spec);
@@ -49,12 +52,16 @@ public:
 
 	//Calculate next step of dynamics simulation
 	void Update();
+	//Saves macroscopic quantities of all nodes to a text file of given path
+	void Serialize(std::filesystem::path filepath);
 
 private:
 	LatticeSpecification m_Spec;
 
 	//1 lattice (length) unit / time step
 	double m_BaseSpeed;
+	//Viscosity parameter
+	double m_Tau = 1.0;
 
 	std::vector<std::vector<Node>> m_Nodes;
 };

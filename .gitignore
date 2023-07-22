@@ -2,6 +2,10 @@
 
 #Build directory
 build/
+#Raw text files output
+output/
+#Python plots
+plots/
 
 ###Prevention:
 

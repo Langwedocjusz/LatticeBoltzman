@@ -35,7 +35,7 @@ double Node::Equlibrium(double base_speed, uint32_t idx)
 		1.0 / 36.0, 1.0 / 36.0, 1.0 / 36.0, 1.0 / 36.0,
 	};
 
-	Vec2 e = s_BaseVelocities[idx];
+	const Vec2 e = s_BaseVelocities[idx];
 
 	const double eDotU = dot(e, Velocity);
 	const double u2 = dot(Velocity, Velocity);
@@ -58,6 +58,17 @@ Lattice::~Lattice()
 
 }
 
+void Lattice::Initialize(void func(size_t, size_t, Node&))
+{
+	for (size_t idx = 0; idx < m_Nodes.size(); idx++)
+	{
+		for (size_t idy = 0; idy < m_Nodes.size(); idy++)
+		{
+			func(idx, idy, m_Nodes[idx][idy]);
+		}
+	}
+}
+
 void Lattice::Update()
 {
 	const auto& sizeX = m_Spec.sizeX;
@@ -68,17 +79,20 @@ void Lattice::Update()
 	for (size_t i = 0; i < m_Nodes.size(); i++)
 	{
 		//Neighbor node ids: left, right
-		size_t l = (i != 0)         ? i - 1 : sizeX - 1;
-		size_t r = (i != sizeX - 1) ? i + 1 : 0;          
+		const size_t l = (i != 0)         ? i - 1 : sizeX - 1;
+		const size_t r = (i != sizeX - 1) ? i + 1 : 0;          
 
 		for (size_t j = 0; j < m_Nodes[0].size(); j++)
 		{
 			//Skip solid nodes
 			if (m_Nodes[i][j].IsSolid) continue;
 
+			//Update Macroscopic values
+			m_Nodes[i][j].UpdateMacroscopic();
+
 			//Neightbor node ids: up, down
-			size_t u = (j != sizeY - 1) ? j + 1 : 0;
-			size_t d = (j != 0)         ? j - 1 : sizeY - 1;
+			const size_t u = (j != sizeY - 1) ? j + 1 : 0;
+			const size_t d = (j != 0)         ? j - 1 : sizeY - 1;
 
 			//Uses following convention from "Lattice Boltzman Modelling 
 			// An Introduction for Geoscientists and Engineers":

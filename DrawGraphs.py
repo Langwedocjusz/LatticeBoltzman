@@ -5,17 +5,23 @@ import matplotlib.pyplot as plt
 data_dir = 'output'
 plots_dir = 'plots'
 
-for filename in os.listdir(data_dir):
-    filepath = os.path.join(data_dir, filename)
+if not os.path.exists(plots_dir):
+   os.makedirs(plots_dir)
 
-    if not os.path.isfile(filepath): 
+for filename in os.listdir(data_dir):
+    filepath_in = os.path.join(data_dir, filename)
+
+    if not os.path.isfile(filepath_in): 
         continue
 
-    data = np.loadtxt(filepath)
+    data = np.loadtxt(filepath_in)
 
     densities    = data[::, 0::3]
     velocities_x = data[::, 1::3]
     velocities_y = data[::, 2::3]
 
-    #plt.imshow(data, cmap='hot', interpolation='nearest')
-    #plt.show()
+    filepath_out = plots_dir + '/' + os.path.splitext(filename)[0] + '.png'
+
+    plt.imshow(velocities_x, cmap='hot', interpolation='nearest')
+    plt.savefig(filepath_out)
+    plt.close()

@@ -9,10 +9,12 @@
 
 struct Node {
 	//Distribution Weights:
-	std::array<double, 9> Weights, TmpWeights;
+	std::array<double, 9> Weights{0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0};
+	std::array<double, 9> TmpWeights{0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0};
+
 	//Macroscopic Quantities:
-	double Density;
-	Utils::Vec2 Velocity;
+	double Density = 0.0;
+	Utils::Vec2 Velocity{0.0, 0.0};
 	//Solid nodes are excluded from dynamics simulation
 	bool IsSolid = false;
 
@@ -50,6 +52,8 @@ public:
 	Lattice(LatticeSpecification spec);
 	~Lattice();
 
+	//Applies func(id_x, id_y, Node&) on all nodes, to initialize them
+	void Initialize(void func(size_t, size_t, Node&));
 	//Calculate next step of dynamics simulation
 	void Update();
 	//Saves macroscopic quantities of all nodes to a text file of given path

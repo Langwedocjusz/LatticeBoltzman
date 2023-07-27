@@ -6,6 +6,7 @@
 #include <filesystem>
 
 #include "Utils.h"
+#include "Scene.h"
 
 struct Node {
 	//Distribution Weights:
@@ -52,8 +53,10 @@ public:
 	Lattice(LatticeSpecification spec);
 	~Lattice();
 
-	//Applies func(id_x, id_y, Node&) on all nodes, to initialize them
-	void Initialize(void func(size_t, size_t, Node&));
+	//Sets is_solid flag of all nodes according to a pre-defined scene
+	void LoadScene(const Scene& scene);
+	//Applies func(id_x, id_y, Node&) on all non-solid nodes, to initialize them
+	void InitFlow(void func(size_t, size_t, Node&));
 	//Calculate next step of dynamics simulation
 	void Update();
 	//Saves macroscopic quantities of all nodes to a text file of given path

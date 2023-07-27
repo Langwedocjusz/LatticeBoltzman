@@ -20,7 +20,7 @@ ProgramArgs ParseArgs(int argc, char** argv)
 
 	size_t width = 0, height = 0;
 	double length_unit = 1.0;
-	double time_step   = 1.0;
+	double time_step   = 0.1;
 	double mass_unit   = 1.0;
 
 	try 
@@ -50,6 +50,11 @@ int main(int argc, char** argv)
 	//Initialize lattice
 	Lattice lattice(args.LatticeSpec);
 
+	Scene scene;
+	scene.PushShape<Circle>(Utils::Vec2{ 50.0, 50.0 }, 25.0);
+
+	lattice.LoadScene(scene);
+
 	auto dziabdziabdziab = [](size_t idx, size_t idy, Node& node)
 	{
 		const double sin_x = std::abs(std::sin(static_cast<double>(idx) / 100.0));
@@ -59,7 +64,7 @@ int main(int argc, char** argv)
 		node.Weights[2] = sin_y + 0.001;
 	};
 
-	lattice.Initialize(dziabdziabdziab);
+	lattice.InitFlow(dziabdziabdziab);
 
 	//Setup output directory
 	const std::string dir_name{ "output" };

@@ -6,5 +6,9 @@ namespace Utils {
 		double x, y;
 	};
 
+	double length(Vec2 v);
 	double dot(Vec2 v1, Vec2 v2);
 };
+
+Utils::Vec2 operator+(const Utils::Vec2 v1, const Utils::Vec2 v2);
+Utils::Vec2 operator-(const Utils::Vec2 v1, const Utils::Vec2 v2);

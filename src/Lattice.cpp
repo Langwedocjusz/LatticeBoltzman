@@ -51,6 +51,9 @@ Lattice::Lattice(LatticeSpecification spec)
 	: m_Spec(spec), m_BaseSpeed(spec.LengthUnit/spec.TimeStep)
 {
 	m_Nodes.resize(m_Spec.sizeX, std::vector<Node>(m_Spec.sizeY));
+
+	//Convert tau from lu^2 / dt units:
+	m_Tau *= m_Spec.LengthUnit * m_Spec.LengthUnit / m_Spec.TimeStep;
 }
 
 Lattice::~Lattice()
@@ -58,13 +61,38 @@ Lattice::~Lattice()
 
 }
 
-void Lattice::Initialize(void func(size_t, size_t, Node&))
+void Lattice::LoadScene(const Scene& scene)
 {
 	for (size_t idx = 0; idx < m_Nodes.size(); idx++)
 	{
-		for (size_t idy = 0; idy < m_Nodes.size(); idy++)
+		for (size_t idy = 0; idy < m_Nodes[0].size(); idy++)
 		{
-			func(idx, idy, m_Nodes[idx][idy]);
+			const auto& lu = m_Spec.LengthUnit;
+
+			Vec2 pos{ 
+				lu * static_cast<double>(idx), 
+				lu * static_cast<double>(idy) 
+			};
+
+			m_Nodes[idx][idy].IsSolid = scene.IsInside(pos);
+
+			m_Nodes[idx][idy].Density = 0.0;
+			m_Nodes[idx][idy].Velocity = Vec2{ 0.0, 0.0 };
+		}
+	}
+}
+
+void Lattice::InitFlow(void func(size_t, size_t, Node&))
+{
+	for (size_t idx = 0; idx < m_Nodes.size(); idx++)
+	{
+		for (size_t idy = 0; idy < m_Nodes[0].size(); idy++)
+		{
+			auto& node = m_Nodes[idx][idy];
+
+			if (node.IsSolid) continue;
+
+			func(idx, idy, node);
 		}
 	}
 }

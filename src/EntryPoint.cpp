@@ -44,6 +44,7 @@ ProgramArgs ParseArgs(int argc, char** argv)
 
 int main(int argc, char** argv)
 {
+
 	//Parse input
 	const auto args = ParseArgs(argc, argv);
 

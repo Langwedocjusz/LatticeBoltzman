@@ -22,6 +22,7 @@ for filename in os.listdir(data_dir):
 
     filepath_out = plots_dir + '/' + os.path.splitext(filename)[0] + '.png'
 
-    plt.imshow(velocities_x, cmap='hot', interpolation='nearest')
+    plt.imshow(densities, cmap='plasma', interpolation='bicubic')
+    plt.colorbar()
     plt.savefig(filepath_out)
     plt.close()

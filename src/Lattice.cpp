@@ -16,6 +16,9 @@ void Node::UpdateMacroscopic()
 		Density += weight;
 	}
 
+	//Do not attempt to calculate velocity if density is zero, as that is ill defined
+	if (!(Density > 0.0)) return;
+
 	//Macroscopic velocity is the weighted average of base velocities
 	for (size_t i = 0; i < Weights.size(); i++)
 	{
@@ -29,6 +32,10 @@ void Node::UpdateMacroscopic()
 
 double Node::Equlibrium(double base_speed, uint32_t idx)
 {
+	//Formula for local equilibrium weights as seen in equation (17) in
+	//"Lattice Boltzman Modelling An Introduction for Geoscientists and Engineers"
+	//It is actually a truncated Taylor expansion of Maxwell distribution
+
 	constexpr std::array<double, 9> weights{
 		4.0 / 9.0,
 		1.0 / 9.0, 1.0 / 9.0, 1.0 / 9.0, 1.0 / 9.0,
@@ -53,7 +60,7 @@ Lattice::Lattice(LatticeSpecification spec)
 	m_Nodes.resize(m_Spec.sizeX, std::vector<Node>(m_Spec.sizeY));
 
 	//Convert tau from lu^2 / dt units:
-	m_Tau *= m_Spec.LengthUnit * m_Spec.LengthUnit / m_Spec.TimeStep;
+	m_Tau *= m_Spec.LengthUnit * m_Spec.LengthUnit * m_Spec.LengthUnit / m_Spec.TimeStep;
 }
 
 Lattice::~Lattice()
@@ -63,6 +70,7 @@ Lattice::~Lattice()
 
 void Lattice::LoadScene(const Scene& scene)
 {
+	//Test against the scene, if a node is inside some shape mark it as solid
 	for (size_t idx = 0; idx < m_Nodes.size(); idx++)
 	{
 		for (size_t idy = 0; idy < m_Nodes[0].size(); idy++)
@@ -75,9 +83,35 @@ void Lattice::LoadScene(const Scene& scene)
 			};
 
 			m_Nodes[idx][idy].IsSolid = scene.IsInside(pos);
+		}
+	}
 
-			m_Nodes[idx][idy].Density = 0.0;
-			m_Nodes[idx][idy].Velocity = Vec2{ 0.0, 0.0 };
+	//If a node and all its neighbors are solid mark it as solid_interior
+	const auto sizeX = m_Nodes.size();
+	const auto sizeY = m_Nodes[0].size();
+
+	for (size_t idx = 0; idx < sizeX; idx++)
+	{
+		const size_t l = (idx != 0) ? idx - 1 : sizeX - 1;
+		const size_t r = (idx != sizeX - 1) ? idx + 1 : 0;
+
+		for (size_t idy = 0; idy < sizeY; idy++)
+		{
+			const size_t u = (idy != sizeY - 1) ? idy + 1 : 0;
+			const size_t d = (idy != 0) ? idy - 1 : sizeY - 1;
+
+			bool is_solid_interior = m_Nodes[idx][idy].IsSolid;
+
+			is_solid_interior = is_solid_interior && m_Nodes[l][idy].IsSolid;
+			is_solid_interior = is_solid_interior && m_Nodes[r][idy].IsSolid;
+			is_solid_interior = is_solid_interior && m_Nodes[idx][u].IsSolid;
+			is_solid_interior = is_solid_interior && m_Nodes[idx][d].IsSolid;
+			is_solid_interior = is_solid_interior && m_Nodes[l][u].IsSolid;
+			is_solid_interior = is_solid_interior && m_Nodes[r][d].IsSolid;
+			is_solid_interior = is_solid_interior && m_Nodes[r][u].IsSolid;
+			is_solid_interior = is_solid_interior && m_Nodes[l][d].IsSolid;
+
+			m_Nodes[idx][idy].IsSolidInterior = is_solid_interior;
 		}
 	}
 }
@@ -103,7 +137,6 @@ void Lattice::Update()
 	const auto& sizeY = m_Spec.sizeY;
 
 	//Streaming step
-
 	for (size_t i = 0; i < m_Nodes.size(); i++)
 	{
 		//Neighbor node ids: left, right
@@ -112,8 +145,8 @@ void Lattice::Update()
 
 		for (size_t j = 0; j < m_Nodes[0].size(); j++)
 		{
-			//Skip solid nodes
-			if (m_Nodes[i][j].IsSolid) continue;
+			//Skip solid interior nodes
+			if (m_Nodes[i][j].IsSolidInterior) continue;
 
 			//Update Macroscopic values
 			m_Nodes[i][j].UpdateMacroscopic();
@@ -149,20 +182,38 @@ void Lattice::Update()
 		{
 			auto& node = m_Nodes[i][j];
 
-			//Skip solid nodes
-			if (node.IsSolid) continue;
+			//Skip solid interior nodes
+			if (node.IsSolidInterior) continue;
 
-			for (size_t a = 0; a < 9; a++)
+			//Perform bounceback on solid boundary nodes:
+			if (node.IsSolid)
 			{
-				const auto f_tmp = node.TmpWeights[a];
-				const auto f_eq = node.Equlibrium(m_BaseSpeed, a);
+				double tmp;
+				auto& fij = node.TmpWeights;
+				
+				tmp = fij[1]; fij[1] = fij[3]; fij[3] = tmp;
+				tmp = fij[2]; fij[2] = fij[4]; fij[4] = tmp;
+				tmp = fij[5]; fij[5] = fij[7]; fij[7] = tmp;
+				tmp = fij[6]; fij[6] = fij[8]; fij[8] = tmp;
 
-				node.Weights[a] = f_tmp - (f_tmp - f_eq) / m_Tau;
+				node.Weights = node.TmpWeights;
+			}
+
+			//Perform relaxation towards local equilibrium otherwise
+			else
+			{
+				for (size_t a = 0; a < 9; a++)
+				{
+					const auto f_tmp = node.TmpWeights[a];
+					const auto f_eq = node.Equlibrium(m_BaseSpeed, a);
+
+					node.Weights[a] = f_tmp - (f_tmp - f_eq) / m_Tau;
+				}
 			}
 
 		}
 	}
-
+	
 }
 
 void Lattice::Serialize(std::filesystem::path filepath)

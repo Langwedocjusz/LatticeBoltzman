@@ -15,9 +15,9 @@ struct Node {
 
 	//Macroscopic Quantities:
 	double Density = 0.0;
-	Utils::Vec2 Velocity{0.0, 0.0};
+	Utils::Vec2 Velocity = Utils::Vec2{0.0, 0.0};
 	//Solid nodes are excluded from dynamics simulation
-	bool IsSolid = false;
+	bool IsSolid = false, IsSolidInterior;
 
 	//Recalculates macroscopic denisty and velocity
 	void UpdateMacroscopic();
@@ -67,7 +67,7 @@ private:
 
 	//1 lattice (length) unit / time step
 	double m_BaseSpeed;
-	//Viscosity parameter
+	//Viscosity parameter in lu^2 / ts units
 	double m_Tau = 1.0;
 
 	std::vector<std::vector<Node>> m_Nodes;

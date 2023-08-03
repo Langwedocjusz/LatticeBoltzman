@@ -14,7 +14,7 @@ struct Node {
 	std::array<double, 9> TmpWeights{0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0};
 
 	//Macroscopic Quantities:
-	double Density = 0.0;
+	double Density{ 0.0 };
 	Utils::Vec2 Velocity = Utils::Vec2{0.0, 0.0};
 	//Solid nodes are excluded from dynamics simulation
 	bool IsSolid = false, IsSolidInterior;
@@ -40,17 +40,31 @@ struct Node {
 	};
 };
 
-struct LatticeSpecification {
-	size_t sizeX, sizeY;
-
-	double LengthUnit; //[m]
-	double TimeStep;   //[s]
-	double MassUnit;   //[kg]
-};
-
 class Lattice {
 public:
-	Lattice(LatticeSpecification spec);
+
+	enum Boundary {
+		Right = 0, Up = 1, Left = 2, Down = 3
+	};
+
+	enum class BoundaryCondition {
+		Periodic, VonNeumann, Dirichlet
+	};
+
+	struct Specification {
+		size_t sizeX, sizeY;
+
+		double LengthUnit; //[m]
+		double TimeStep;   //[s]
+		double MassUnit;   //[kg]
+
+		//BoundaryCondition UpBC, DownBC, RightBC, LeftBC;
+		std::array<Lattice::BoundaryCondition, 4> BoundaryConditions;
+
+		Utils::Vec2 VonNeumannVelocity;
+	};
+
+	Lattice(Specification spec);
 	~Lattice();
 
 	//Sets is_solid flag of all nodes according to a pre-defined scene
@@ -63,12 +77,14 @@ public:
 	void Serialize(std::filesystem::path filepath);
 
 private:
-	LatticeSpecification m_Spec;
+	void CalculateVonNeumann(Boundary boundary);
 
-	//1 lattice (length) unit / time step
-	double m_BaseSpeed;
+	Specification m_Spec;
+
 	//Viscosity parameter in lu^2 / ts units
 	double m_Tau = 1.0;
+	//1 lattice (length) unit / time step (initialized in the constructor)
+	double m_BaseSpeed;
 
 	std::vector<std::vector<Node>> m_Nodes;
 };

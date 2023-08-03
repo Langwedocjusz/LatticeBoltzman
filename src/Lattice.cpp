@@ -54,7 +54,7 @@ double Node::Equlibrium(double base_speed, uint32_t idx)
 		(1.0 + 3.0 * eDotU / c2 + 4.5 * (eDotU*eDotU) / c4 - 1.5 * u2 /c2);
 }
 
-Lattice::Lattice(LatticeSpecification spec)
+Lattice::Lattice(Specification spec)
 	: m_Spec(spec), m_BaseSpeed(spec.LengthUnit/spec.TimeStep)
 {
 	m_Nodes.resize(m_Spec.sizeX, std::vector<Node>(m_Spec.sizeY));
@@ -137,13 +137,13 @@ void Lattice::Update()
 	const auto& sizeY = m_Spec.sizeY;
 
 	//Streaming step
-	for (size_t i = 0; i < m_Nodes.size(); i++)
+	for (size_t i = 0; i < sizeX; i++)
 	{
 		//Neighbor node ids: left, right
 		const size_t l = (i != 0)         ? i - 1 : sizeX - 1;
 		const size_t r = (i != sizeX - 1) ? i + 1 : 0;          
 
-		for (size_t j = 0; j < m_Nodes[0].size(); j++)
+		for (size_t j = 0; j < sizeY; j++)
 		{
 			//Skip solid interior nodes
 			if (m_Nodes[i][j].IsSolidInterior) continue;
@@ -213,8 +213,96 @@ void Lattice::Update()
 
 		}
 	}
-	
+
+	//Consider boundary conditions
+	for (int i = 0; i < 4; i++)
+	{
+		const auto& boundary_condition = m_Spec.BoundaryConditions[i];
+
+		switch (boundary_condition)
+		{
+			case BoundaryCondition::VonNeumann:
+			{
+				CalculateVonNeumann(static_cast<Boundary>(i));
+				break;
+			}
+
+			case BoundaryCondition::Dirichlet:
+			{
+				//TO-DO: write this
+				break;
+			}
+
+			default:
+			{
+				//Periodic conditions need no further handling
+				break;
+			}
+		}
+	}
 }
+
+void Lattice::CalculateVonNeumann(Boundary boundary)
+{
+	const auto& sizeX = m_Spec.sizeX;
+	const auto& sizeY = m_Spec.sizeY;
+
+	bool horizontal = (boundary == Up || boundary == Down);
+
+	//Determine iteration range
+	size_t max_id = horizontal ? sizeX : sizeY;
+
+	//Select Von Neuman velocity component
+	double VonNeumanVel = horizontal ? m_Spec.VonNeumannVelocity.x : m_Spec.VonNeumannVelocity.y;
+
+	//Select appropriate indices
+	typedef std::array<size_t, 3> triplet;
+
+	constexpr std::array<triplet, 4> same_options{
+		triplet{3, 7, 6}, triplet{2, 5, 6}, triplet{1, 5, 8}, triplet{4, 7, 8}
+	};
+
+	constexpr std::array<triplet, 4> middle_options{
+		triplet{4, 0, 2}, triplet{1, 0, 3}, triplet{2, 0, 4}, triplet{3, 0, 1}
+	};
+
+	constexpr std::array<triplet, 4> opposite_options{
+		triplet{1, 5, 8}, triplet{4, 7, 8}, triplet{3, 7, 6}, triplet{2, 5, 6}
+	};
+
+	const triplet same     = same_options[boundary];
+	const triplet middle   = middle_options[boundary];
+	const triplet opposite = opposite_options[boundary];
+	
+	//Iterate over appropriate edge of the lattice
+	for (size_t i = 0; i < max_id; i++)
+	{
+		std::array<double, 9> *fi_ptr = nullptr;
+
+		switch (boundary)
+		{
+			case Up:    {fi_ptr = &m_Nodes[i][sizeY - 1].TmpWeights; break;}
+			case Down:  {fi_ptr = &m_Nodes[i][0].TmpWeights;		 break;}
+			case Left:  {fi_ptr = &m_Nodes[0][i].TmpWeights;		 break;}
+			case Right: {fi_ptr = &m_Nodes[sizeX - 1][i].TmpWeights; break;}
+		}
+		
+		//Calculate Zou and He velocity BCs
+		auto& fi = *fi_ptr;
+		
+		const double sum_middle = fi[middle[0]] + fi[middle[1]] + fi[middle[2]];
+		const double sum_same = fi[same[0]] + fi[same[1]] + fi[same[2]];
+
+		double rho0 = (sum_middle + 2.0 * sum_same) / (1.0 + VonNeumanVel);
+		
+		double ru = rho0 * VonNeumanVel;
+
+		fi[opposite[0]] = fi[same[0]] - (2.0 / 3.0) * ru;
+		fi[opposite[1]] = fi[same[1]] - (1.0 / 6.0) * ru + 0.5 * (fi[middle[0]] - fi[middle[2]]);
+		fi[opposite[2]] = fi[same[2]] - (1.0 / 6.0) * ru + 0.5 * (fi[middle[2]] - fi[middle[0]]);
+	}
+}
+
 
 void Lattice::Serialize(std::filesystem::path filepath)
 {

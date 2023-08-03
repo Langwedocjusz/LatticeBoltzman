@@ -7,7 +7,7 @@ struct ProgramArgs {
 	int NumIterations;
 	int SaveStep;
 
-	LatticeSpecification LatticeSpec;
+	Lattice::Specification LatticeSpec;
 };
 
 ProgramArgs ParseArgs(int argc, char** argv)
@@ -34,11 +34,21 @@ ProgramArgs ParseArgs(int argc, char** argv)
 	catch (const std::out_of_range& ex)
 	{
 		std::cerr << "Incorrect args\n";
+		std::cerr << "Supported arguments are (in order): <width> <height> <num iterations> <save step>\n";
 	}
+
+	Lattice::BoundaryCondition boundary = Lattice::BoundaryCondition::VonNeumann;
+	Utils::Vec2 neumann_vel{ 0.0, 10.0 };
 
 	return ProgramArgs{
 		iterations, save_step,
-		LatticeSpecification{width, height, length_unit, time_step, mass_unit}
+
+		Lattice::Specification{
+			width, height, 
+			length_unit, time_step, mass_unit,
+			{boundary, boundary, boundary, boundary},
+			neumann_vel
+		}
 	};
 }
 
@@ -61,8 +71,10 @@ int main(int argc, char** argv)
 		const double sin_x = std::abs(std::sin(static_cast<double>(idx) / 100.0));
 		const double sin_y = std::abs(std::sin(static_cast<double>(idy) / 150.0));
 
-		node.Weights[1] = sin_x + 0.001;
-		node.Weights[2] = sin_y + 0.001;
+		node.Weights[0] = 0.1 + sin_x * sin_y;
+
+		//node.Weights[1] = sin_x + 0.001;
+		//node.Weights[2] = sin_y + 0.001;
 	};
 
 	lattice.InitFlow(dziabdziabdziab);

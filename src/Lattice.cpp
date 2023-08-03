@@ -293,20 +293,27 @@ void Lattice::CalculateVonNeumann(Boundary boundary)
 		}
 		
 		//Calculate Zou and He velocity BCs
-		auto& fi = (*node).TmpWeights;
+		if (node)
+		{
+			auto& fi = (*node).TmpWeights;
+
+			const double sum_middle = fi[middle[0]] + fi[middle[1]] + fi[middle[2]];
+			const double sum_opposite = fi[opposite[0]] + fi[opposite[1]] + fi[opposite[2]];
+
+			double rho0 = (sum_middle + 2.0 * sum_opposite) / (1.0 - sgn * VonNeumanVel);
+
+			double ru = rho0 * VonNeumanVel;
+
+			fi[same[0]] = fi[opposite[0]] + sgn * (2.0 / 3.0) * ru;
+			fi[same[1]] = fi[opposite[1]] + sgn * (1.0 / 6.0) * ru - sgn * 0.5 * (fi[middle[0]] - fi[middle[2]]);
+			fi[same[2]] = fi[opposite[2]] + sgn * (1.0 / 6.0) * ru - sgn * 0.5 * (fi[middle[2]] - fi[middle[0]]);
+		}
+
+		else
+		{
+			throw std::invalid_argument("Node pointer is null.");
+		}
 		
-		const double sum_middle = fi[middle[0]] + fi[middle[1]] + fi[middle[2]];
-		const double sum_opposite = fi[opposite[0]] + fi[opposite[1]] + fi[opposite[2]];
-
-		double rho0 = (sum_middle + 2.0 * sum_opposite) / (1.0 - sgn * VonNeumanVel);
-		
-		double ru = rho0 * VonNeumanVel;
-
-		fi[same[0]] = fi[opposite[0]] + sgn * (2.0 / 3.0) * ru;
-		fi[same[1]] = fi[opposite[1]] + sgn * (1.0 / 6.0) * ru - sgn * 0.5 * (fi[middle[0]] - fi[middle[2]]);
-		fi[same[2]] = fi[opposite[2]] + sgn * (1.0 / 6.0) * ru - sgn * 0.5 * (fi[middle[2]] - fi[middle[0]]);
-
-		fi[opposite[0]] = fi[opposite[0]];
 	}
 }
 

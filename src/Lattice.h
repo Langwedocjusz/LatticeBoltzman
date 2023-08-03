@@ -17,7 +17,7 @@ struct Node {
 	double Density{ 0.0 };
 	Utils::Vec2 Velocity = Utils::Vec2{0.0, 0.0};
 	//Solid nodes are excluded from dynamics simulation
-	bool IsSolid = false, IsSolidInterior;
+	bool IsSolid = false, IsSolidInterior = false;
 
 	//Recalculates macroscopic denisty and velocity
 	void UpdateMacroscopic();

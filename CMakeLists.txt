@@ -29,6 +29,9 @@ target_sources(${PROJECT_NAME} PRIVATE ${headers} ${sources} ${imgui_impl})
 #Specify include directories
 target_include_directories(${PROJECT_NAME} PUBLIC src)
 
+#Add nlohmann json
+target_include_directories(${PROJECT_NAME} PUBLIC vendor/json/single_include)
+
 #Directory structure for IDEs like Visual Studio
 source_group(src REGULAR_EXPRESSION "src/*")
 

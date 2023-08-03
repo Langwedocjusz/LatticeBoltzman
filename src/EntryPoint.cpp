@@ -20,7 +20,7 @@ ProgramArgs ParseArgs(int argc, char** argv)
 
 	size_t width = 0, height = 0;
 	double length_unit = 1.0;
-	double time_step   = 0.1;
+	double time_step   = 0.02;
 	double mass_unit   = 1.0;
 
 	try 
@@ -37,8 +37,8 @@ ProgramArgs ParseArgs(int argc, char** argv)
 		std::cerr << "Supported arguments are (in order): <width> <height> <num iterations> <save step>\n";
 	}
 
-	Lattice::BoundaryCondition boundary = Lattice::BoundaryCondition::VonNeumann;
-	Utils::Vec2 neumann_vel{ 0.0, 10.0 };
+	auto boundary = Lattice::BoundaryCondition::VonNeumann;
+	auto periodic = Lattice::BoundaryCondition::Periodic;
 
 	return ProgramArgs{
 		iterations, save_step,
@@ -46,15 +46,14 @@ ProgramArgs ParseArgs(int argc, char** argv)
 		Lattice::Specification{
 			width, height, 
 			length_unit, time_step, mass_unit,
-			{boundary, boundary, boundary, boundary},
-			neumann_vel
+			{boundary, periodic, boundary, periodic},
+			{0.9, 0.0, 0.9, 0.0}
 		}
 	};
 }
 
 int main(int argc, char** argv)
 {
-
 	//Parse input
 	const auto args = ParseArgs(argc, argv);
 
@@ -62,7 +61,7 @@ int main(int argc, char** argv)
 	Lattice lattice(args.LatticeSpec);
 
 	Scene scene;
-	scene.PushShape<Circle>(Utils::Vec2{ 50.0, 50.0 }, 25.0);
+	scene.PushShape<Circle>(Utils::Vec2{ 64.0, 64.0 }, 25.0);
 
 	lattice.LoadScene(scene);
 
@@ -71,7 +70,7 @@ int main(int argc, char** argv)
 		const double sin_x = std::abs(std::sin(static_cast<double>(idx) / 100.0));
 		const double sin_y = std::abs(std::sin(static_cast<double>(idy) / 150.0));
 
-		node.Weights[0] = 0.1 + sin_x * sin_y;
+		node.Weights[0] = 1.0;
 
 		//node.Weights[1] = sin_x + 0.001;
 		//node.Weights[2] = sin_y + 0.001;

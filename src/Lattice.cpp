@@ -175,6 +175,33 @@ void Lattice::Update()
 		}
 	}
 
+	//Consider boundary conditions
+	for (int i = 0; i < 4; i++)
+	{
+		const auto& boundary_condition = m_Spec.BoundaryConditions[i];
+
+		switch (boundary_condition)
+		{
+			case BoundaryCondition::VonNeumann:
+			{
+				CalculateVonNeumann(static_cast<Boundary>(i));
+				break;
+			}
+
+			case BoundaryCondition::Dirichlet:
+			{
+				//TO-DO: write this
+				break;
+			}
+
+			default:
+			{
+				//Periodic conditions need no further handling
+				break;
+			}
+		}
+	}
+
 	//Collision step
 	for (size_t i = 0; i < m_Nodes.size(); i++)
 	{
@@ -213,93 +240,73 @@ void Lattice::Update()
 
 		}
 	}
-
-	//Consider boundary conditions
-	for (int i = 0; i < 4; i++)
-	{
-		const auto& boundary_condition = m_Spec.BoundaryConditions[i];
-
-		switch (boundary_condition)
-		{
-			case BoundaryCondition::VonNeumann:
-			{
-				CalculateVonNeumann(static_cast<Boundary>(i));
-				break;
-			}
-
-			case BoundaryCondition::Dirichlet:
-			{
-				//TO-DO: write this
-				break;
-			}
-
-			default:
-			{
-				//Periodic conditions need no further handling
-				break;
-			}
-		}
-	}
 }
 
 void Lattice::CalculateVonNeumann(Boundary boundary)
 {
+	//This scheme of considering VonNeumann boundary conditions currently 
+	// fails when applied on two consecutive edges.
+	//To-do: consider some corner conditions?
+
 	const auto& sizeX = m_Spec.sizeX;
 	const auto& sizeY = m_Spec.sizeY;
 
-	bool horizontal = (boundary == Up || boundary == Down);
+	double VonNeumanVel = m_Spec.VonNeumannVelocitiesNormal[boundary];
 
 	//Determine iteration range
-	size_t max_id = horizontal ? sizeX : sizeY;
+	bool horizontal = (boundary == Up || boundary == Down);
 
-	//Select Von Neuman velocity component
-	double VonNeumanVel = horizontal ? m_Spec.VonNeumannVelocity.x : m_Spec.VonNeumannVelocity.y;
+	size_t max_id = horizontal ? sizeX : sizeY;
 
 	//Select appropriate indices
 	typedef std::array<size_t, 3> triplet;
 
 	constexpr std::array<triplet, 4> same_options{
-		triplet{3, 7, 6}, triplet{2, 5, 6}, triplet{1, 5, 8}, triplet{4, 7, 8}
+		triplet{1, 5, 8}, triplet{2, 5, 6}, triplet{3, 7, 6}, triplet{4, 7, 8},
 	};
 
 	constexpr std::array<triplet, 4> middle_options{
-		triplet{4, 0, 2}, triplet{1, 0, 3}, triplet{2, 0, 4}, triplet{3, 0, 1}
+		triplet{2, 0, 4}, triplet{1, 0, 3}, triplet{2, 0, 4}, triplet{1, 0, 3}
 	};
 
 	constexpr std::array<triplet, 4> opposite_options{
-		triplet{1, 5, 8}, triplet{4, 7, 8}, triplet{3, 7, 6}, triplet{2, 5, 6}
+		triplet{3, 7, 6}, triplet{4, 7, 8}, triplet{1, 5, 8}, triplet{2, 5, 6}
 	};
 
 	const triplet same     = same_options[boundary];
 	const triplet middle   = middle_options[boundary];
 	const triplet opposite = opposite_options[boundary];
 	
+	double sgn = (boundary == Up || boundary == Right) ? 1.0 : -1.0;
+
 	//Iterate over appropriate edge of the lattice
 	for (size_t i = 0; i < max_id; i++)
 	{
-		std::array<double, 9> *fi_ptr = nullptr;
+		Node* node = nullptr;
 
 		switch (boundary)
 		{
-			case Up:    {fi_ptr = &m_Nodes[i][sizeY - 1].TmpWeights; break;}
-			case Down:  {fi_ptr = &m_Nodes[i][0].TmpWeights;		 break;}
-			case Left:  {fi_ptr = &m_Nodes[0][i].TmpWeights;		 break;}
-			case Right: {fi_ptr = &m_Nodes[sizeX - 1][i].TmpWeights; break;}
+			case Up:    {node = &m_Nodes[i][sizeY - 1]; break;}
+			case Down:  {node = &m_Nodes[i][0];		 break;}
+			case Left:  {node = &m_Nodes[0][i];		 break;}
+			case Right: {node = &m_Nodes[sizeX - 1][i]; break;}
 		}
 		
 		//Calculate Zou and He velocity BCs
-		auto& fi = *fi_ptr;
+		auto& fi = (*node).TmpWeights;
 		
 		const double sum_middle = fi[middle[0]] + fi[middle[1]] + fi[middle[2]];
-		const double sum_same = fi[same[0]] + fi[same[1]] + fi[same[2]];
+		const double sum_opposite = fi[opposite[0]] + fi[opposite[1]] + fi[opposite[2]];
 
-		double rho0 = (sum_middle + 2.0 * sum_same) / (1.0 + VonNeumanVel);
+		double rho0 = (sum_middle + 2.0 * sum_opposite) / (1.0 - sgn * VonNeumanVel);
 		
 		double ru = rho0 * VonNeumanVel;
 
-		fi[opposite[0]] = fi[same[0]] - (2.0 / 3.0) * ru;
-		fi[opposite[1]] = fi[same[1]] - (1.0 / 6.0) * ru + 0.5 * (fi[middle[0]] - fi[middle[2]]);
-		fi[opposite[2]] = fi[same[2]] - (1.0 / 6.0) * ru + 0.5 * (fi[middle[2]] - fi[middle[0]]);
+		fi[same[0]] = fi[opposite[0]] + sgn * (2.0 / 3.0) * ru;
+		fi[same[1]] = fi[opposite[1]] + sgn * (1.0 / 6.0) * ru - sgn * 0.5 * (fi[middle[0]] - fi[middle[2]]);
+		fi[same[2]] = fi[opposite[2]] + sgn * (1.0 / 6.0) * ru - sgn * 0.5 * (fi[middle[2]] - fi[middle[0]]);
+
+		fi[opposite[0]] = fi[opposite[0]];
 	}
 }
 

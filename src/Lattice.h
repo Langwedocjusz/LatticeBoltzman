@@ -61,7 +61,8 @@ public:
 		//BoundaryCondition UpBC, DownBC, RightBC, LeftBC;
 		std::array<Lattice::BoundaryCondition, 4> BoundaryConditions;
 
-		Utils::Vec2 VonNeumannVelocity;
+		//We assume components tangent to the boundary are zero
+		std::array<double, 4> VonNeumannVelocitiesNormal;
 	};
 
 	Lattice(Specification spec);

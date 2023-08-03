@@ -2,6 +2,7 @@
 
 #include <iostream>
 #include <fstream>
+#include <stdexcept>
 
 using namespace Utils;
 
@@ -180,26 +181,11 @@ void Lattice::Update()
 	{
 		const auto& boundary_condition = m_Spec.BoundaryConditions[i];
 
-		switch (boundary_condition)
-		{
-			case BoundaryCondition::VonNeumann:
-			{
-				CalculateVonNeumann(static_cast<Boundary>(i));
-				break;
-			}
+		//Periodic conditions need no further handling
+		if (boundary_condition == BoundaryCondition::Periodic)
+			continue;
 
-			case BoundaryCondition::Dirichlet:
-			{
-				//TO-DO: write this
-				break;
-			}
-
-			default:
-			{
-				//Periodic conditions need no further handling
-				break;
-			}
-		}
+		HandleBoundary(static_cast<Boundary>(i));
 	}
 
 	//Collision step
@@ -242,16 +228,14 @@ void Lattice::Update()
 	}
 }
 
-void Lattice::CalculateVonNeumann(Boundary boundary)
+void Lattice::HandleBoundary(Boundary boundary)
 {
-	//This scheme of considering VonNeumann boundary conditions currently 
+	//This scheme of considering boundary conditions currently 
 	// fails when applied on two consecutive edges.
 	//To-do: consider some corner conditions?
 
 	const auto& sizeX = m_Spec.sizeX;
 	const auto& sizeY = m_Spec.sizeY;
-
-	double VonNeumanVel = m_Spec.VonNeumannVelocitiesNormal[boundary];
 
 	//Determine iteration range
 	bool horizontal = (boundary == Up || boundary == Down);
@@ -292,7 +276,7 @@ void Lattice::CalculateVonNeumann(Boundary boundary)
 			case Right: {node = &m_Nodes[sizeX - 1][i]; break;}
 		}
 		
-		//Calculate Zou and He velocity BCs
+		
 		if (node)
 		{
 			auto& fi = (*node).TmpWeights;
@@ -300,13 +284,39 @@ void Lattice::CalculateVonNeumann(Boundary boundary)
 			const double sum_middle = fi[middle[0]] + fi[middle[1]] + fi[middle[2]];
 			const double sum_opposite = fi[opposite[0]] + fi[opposite[1]] + fi[opposite[2]];
 
-			double rho0 = (sum_middle + 2.0 * sum_opposite) / (1.0 - sgn * VonNeumanVel);
+			switch (m_Spec.BoundaryConditions[boundary])
+			{
+			case BoundaryCondition::VonNeumann:
+			{
+				//Calculate Zou and He velocity BCs
+				double VonNeumanVel = m_Spec.VonNeumannVelocitiesNormal[boundary];
 
-			double ru = rho0 * VonNeumanVel;
+				double rho0 = (sum_middle + 2.0 * sum_opposite) / (1.0 - sgn * VonNeumanVel);
 
-			fi[same[0]] = fi[opposite[0]] + sgn * (2.0 / 3.0) * ru;
-			fi[same[1]] = fi[opposite[1]] + sgn * (1.0 / 6.0) * ru - sgn * 0.5 * (fi[middle[0]] - fi[middle[2]]);
-			fi[same[2]] = fi[opposite[2]] + sgn * (1.0 / 6.0) * ru - sgn * 0.5 * (fi[middle[2]] - fi[middle[0]]);
+				double ru = rho0 * VonNeumanVel;
+
+				fi[same[0]] = fi[opposite[0]] + sgn * (2.0 / 3.0) * ru;
+				fi[same[1]] = fi[opposite[1]] + sgn * (1.0 / 6.0) * ru - sgn * 0.5 * (fi[middle[0]] - fi[middle[2]]);
+				fi[same[2]] = fi[opposite[2]] + sgn * (1.0 / 6.0) * ru - sgn * 0.5 * (fi[middle[2]] - fi[middle[0]]);
+
+				break;
+			}
+			case BoundaryCondition::Dirichlet:
+			{
+				//Calculate Zou and He pressure BCs
+				double rho0 = m_Spec.DirichletDensities[boundary];
+
+				double u0 = -1.0 + (sum_middle + 2.0 * sum_opposite) / rho0;
+
+				double ru = rho0 * u0;
+
+				fi[same[0]] = fi[opposite[0]] - (2.0 / 3.0) * ru;
+				fi[same[1]] = fi[opposite[1]] - (1.0 / 6.0) * ru - sgn * 0.5 * (fi[middle[0]] - fi[middle[2]]);
+				fi[same[2]] = fi[opposite[2]] - (1.0 / 6.0) * ru - sgn * 0.5 * (fi[middle[2]] - fi[middle[0]]);
+
+				break;
+			}
+			}
 		}
 
 		else

@@ -63,6 +63,8 @@ public:
 
 		//We assume components tangent to the boundary are zero
 		std::array<double, 4> VonNeumannVelocitiesNormal;
+
+		std::array<double, 4> DirichletDensities;
 	};
 
 	Lattice(Specification spec);
@@ -78,7 +80,7 @@ public:
 	void Serialize(std::filesystem::path filepath);
 
 private:
-	void CalculateVonNeumann(Boundary boundary);
+	void HandleBoundary(Boundary boundary);
 
 	Specification m_Spec;
 

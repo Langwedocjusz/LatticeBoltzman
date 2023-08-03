@@ -47,7 +47,8 @@ ProgramArgs ParseArgs(int argc, char** argv)
 			width, height, 
 			length_unit, time_step, mass_unit,
 			{boundary, periodic, boundary, periodic},
-			{0.9, 0.0, 0.9, 0.0}
+			{0.09, 0.0, 0.09, 0.0},
+			{0.5, 2.0, 1.5, 2.0}
 		}
 	};
 }
@@ -70,7 +71,7 @@ int main(int argc, char** argv)
 		const double sin_x = std::abs(std::sin(static_cast<double>(idx) / 100.0));
 		const double sin_y = std::abs(std::sin(static_cast<double>(idy) / 150.0));
 
-		node.Weights[0] = 1.0;
+		node.Weights[0] = 0.1 + 0.9*static_cast<double>(idx)/128.0;
 
 		//node.Weights[1] = sin_x + 0.001;
 		//node.Weights[2] = sin_y + 0.001;

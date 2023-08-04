@@ -1,77 +1,70 @@
 #include "Lattice.h"
 
 #include <iostream>
+#include <fstream>
 #include <stdexcept>
 
+#include "nlohmann/json.hpp"
+
 struct ProgramArgs {
-	int NumIterations;
-	int SaveStep;
+	int NumIterations = 0;
+	int SaveStep = 1;
 
 	Lattice::Specification LatticeSpec;
+
+	std::vector<AABB> AABBs;
+	std::vector<Circle> Circles;
 };
 
-ProgramArgs ParseArgs(int argc, char** argv)
-{
-	const std::vector<std::string> args(argv + 1, argv + argc);
-
-	//Arguments: width, height, num_iterations, save_step
-
-	int iterations = 0, save_step = 1;
-
-	size_t width = 0, height = 0;
-	double length_unit = 1.0;
-	double time_step   = 0.02;
-	double mass_unit   = 1.0;
-
-	try 
-	{
-		width      = std::stoi(args.at(0));
-		height     = std::stoi(args.at(1));
-		iterations = std::stoi(args.at(2));
-		save_step  = std::stoi(args.at(3));
-	}
-
-	catch (const std::out_of_range& ex)
-	{
-		std::cerr << "Incorrect args\n";
-		std::cerr << "Supported arguments are (in order): <width> <height> <num iterations> <save step>\n";
-	}
-
-	auto boundary = Lattice::BoundaryCondition::VonNeumann;
-	auto periodic = Lattice::BoundaryCondition::Periodic;
-
-	return ProgramArgs{
-		iterations, save_step,
-
-		Lattice::Specification{
-			width, height, 
-			length_unit, time_step, mass_unit,
-			{boundary, periodic, boundary, periodic},
-			{0.09, 0.0, 0.09, 0.0},
-			{0.5, 2.0, 1.5, 2.0}
-		}
-	};
-}
+ProgramArgs ParseArgs(int argc, char** argv);
 
 int main(int argc, char** argv)
 {
 	//Parse input
-	const auto args = ParseArgs(argc, argv);
+	ProgramArgs args;
+
+	try
+	{
+		args = ParseArgs(argc, argv);
+	}
+	
+	catch (std::invalid_argument ex)
+	{
+		std::cerr << ex.what() << '\n';
+		std::cerr << "Only supported argument is a path to simulation config file.\n";
+		return -1;
+	}
+
+	catch (std::runtime_error ex)
+	{
+		std::cerr << ex.what() << '\n';
+		return -1;
+	}
 
 	//Initialize lattice
 	Lattice lattice(args.LatticeSpec);
 
 	Scene scene;
-	scene.PushShape<Circle>(Utils::Vec2{ 64.0, 64.0 }, 25.0);
+	
+	for (const auto& aabb : args.AABBs)
+	{
+		scene.PushShape<AABB>(aabb);
+	}
+
+	for (const auto& circle : args.Circles)
+	{
+		scene.PushShape<Circle>(circle);
+	}
 
 	lattice.LoadScene(scene);
 
+	//Initialize flow
 	auto dziabdziabdziab = [](size_t idx, size_t idy, Node& node)
 	{
 		const double sin_x = std::abs(std::sin(static_cast<double>(idx) / 100.0));
 		const double sin_y = std::abs(std::sin(static_cast<double>(idy) / 150.0));
 
-		node.Weights[0] = 0.1 + 0.9*static_cast<double>(idx)/128.0;
+		node.Weights[0] = 1.0;// 0.1 + 0.9 * static_cast<double>(idx) / 128.0;
 
 		//node.Weights[1] = sin_x + 0.001;
 		//node.Weights[2] = sin_y + 0.001;
@@ -107,4 +100,88 @@ int main(int argc, char** argv)
 	}
 
 	return 0;
+}
+
+ProgramArgs ParseArgs(int argc, char** argv)
+{
+	const std::vector<std::string> args(argv + 1, argv + argc);
+
+	if (args.size() != 1)
+	{
+		throw std::invalid_argument("Incorrect arguments.");
+	}
+
+	auto current_path = std::filesystem::current_path();
+	auto filepath = current_path / args[0];
+
+	std::ifstream input(filepath);
+
+	if (!input)
+	{
+		throw std::runtime_error("Could not open file: " + filepath.string());
+	}
+
+	auto json = nlohmann::json::parse(input);
+
+	ProgramArgs ret;
+
+	ret.LatticeSpec.sizeX = json["LatticeSizeX"];
+	ret.LatticeSpec.sizeY = json["LatticeSizeY"];
+
+	ret.NumIterations = json["NumIterations"];
+	ret.SaveStep = json["SaveStep"];
+
+	ret.LatticeSpec.LengthUnit = json["LengthUnit"];
+	ret.LatticeSpec.TimeStep = json["TimeStep"];
+	ret.LatticeSpec.MassUnit = json["MassUnit"];
+
+	std::map <std::string, Lattice::BoundaryCondition> DictionaryBC{
+		{"Periodic"  , Lattice::BoundaryCondition::Periodic},
+		{"VonNeumann", Lattice::BoundaryCondition::VonNeumann},
+		{"Dirichlet" , Lattice::BoundaryCondition::Dirichlet},
+	};
+
+	for (int i = 0; i < 4; i++)
+	{
+		ret.LatticeSpec.BoundaryConditions[i] = DictionaryBC.at(json["BoundaryConditions"][i]);
+		ret.LatticeSpec.VonNeumannVelocitiesNormal[i] = json["VonNeumannVelocitiesNormal"][i];
+		ret.LatticeSpec.DirichletDensities[i] = json["DirichletDensities"][i];
+	}
+
+	auto aabb_data = json["AABBs"];
+
+	for (size_t i = 0; i < aabb_data.size(); i++)
+	{
+		Utils::Vec2 min{
+			aabb_data[i]["Min"][0],
+			aabb_data[i]["Min"][1],
+		};
+
+		Utils::Vec2 max{
+			aabb_data[i]["Max"][0],
+			aabb_data[i]["Max"][1],
+		};
+
+		ret.AABBs.push_back(
+			AABB(min, max)
+		);
+	}
+
+	auto circles_data = json["Circles"];
+
+	for (size_t i = 0; i < circles_data.size(); i++)
+	{
+		Utils::Vec2 pos{
+			circles_data[i]["Position"][0],
+			circles_data[i]["Position"][1],
+		};
+		
+		double rad = circles_data[i]["Radius"];
+
+		ret.Circles.push_back(
+			Circle(pos, rad)
+		);
+	}
+
+	return ret;
 }

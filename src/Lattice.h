@@ -58,7 +58,6 @@ public:
 		double TimeStep;   //[s]
 		double MassUnit;   //[kg]
 
-		//BoundaryCondition UpBC, DownBC, RightBC, LeftBC;
 		std::array<Lattice::BoundaryCondition, 4> BoundaryConditions;
 
 		//We assume components tangent to the boundary are zero

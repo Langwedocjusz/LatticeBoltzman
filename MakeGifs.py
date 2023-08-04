@@ -2,8 +2,6 @@ import os
 import imageio
 
 def GifFromImages(img_dir, output_path):
-    images = []
-
     names = []
 
     for filename in os.listdir(img_dir):
@@ -20,12 +18,14 @@ def GifFromImages(img_dir, output_path):
     names = [int(name) for name in names]
     names.sort()
 
+    images = []
+
     for name in names:
         filepath = os.path.join(img_dir, str(name) + ".png")
 
         images.append(imageio.imread(filepath))
 
-    imageio.mimsave(output_path, images, format='GIF', duration=4, loop=0)
+    imageio.mimsave(output_path, images, format='GIF', duration=4, loop=0, palette = 512)
 
 
 GifFromImages('plots/density', 'plots/density.gif')

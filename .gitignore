@@ -6,6 +6,8 @@ build/
 output/
 #Python plots
 plots/
+#Ouptut of parameter testing script
+test/
 
 ###Prevention:
 

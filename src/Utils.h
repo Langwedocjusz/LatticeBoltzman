@@ -12,3 +12,4 @@ namespace Utils {
 
 Utils::Vec2 operator+(const Utils::Vec2 v1, const Utils::Vec2 v2);
 Utils::Vec2 operator-(const Utils::Vec2 v1, const Utils::Vec2 v2);
+Utils::Vec2 operator*(const double a, const Utils::Vec2 v);

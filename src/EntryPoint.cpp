@@ -58,20 +58,6 @@ int main(int argc, char** argv)
 
 	lattice.LoadScene(scene);
 
-	//Initialize flow
-	auto dziabdziabdziab = [](size_t idx, size_t idy, Node& node)
-	{
-		const double sin_x = std::abs(std::sin(static_cast<double>(idx) / 100.0));
-		const double sin_y = std::abs(std::sin(static_cast<double>(idy) / 150.0));
-
-		node.Weights[0] = 1.0;// 0.1 + 0.9 * static_cast<double>(idx) / 128.0;
-
-		//node.Weights[1] = sin_x + 0.001;
-		//node.Weights[2] = sin_y + 0.001;
-	};
-
-	lattice.InitFlow(dziabdziabdziab);
-
 	//Setup output directory
 	const std::string dir_name{ "output" };
 
@@ -82,22 +68,31 @@ int main(int argc, char** argv)
 
 	std::filesystem::path output_dir(dir_name);
 
-	//Simulate dynamics and save results
-	for (int i = 0; i < args.NumIterations; i++)
+	try
 	{
-		//Calculate next time step
-		lattice.Update();
-
-		//Once every 'SaveStep' save current configuration to new file
-		if (i % args.SaveStep == 0)
+		//Simulate dynamics and save results
+		for (int i = 0; i < args.NumIterations; i++)
 		{
-			std::string filename = std::to_string(i/args.SaveStep) + ".txt";
+			//Calculate next time step
+			lattice.Update();
 
-			auto filepath = output_dir / filename;
+			//Once every 'SaveStep' save current configuration to new file
+			if (i % args.SaveStep == 0)
+			{
+				std::string filename = std::to_string(i / args.SaveStep) + ".txt";
 
-			lattice.Serialize(filepath);
+				auto filepath = output_dir / filename;
+
+				lattice.Serialize(filepath);
+			}
 		}
 	}
+
+	catch(std::runtime_error ex)
+	{
+		std::cerr << ex.what() << '\n';
+	}
+	
 
 	return 0;
 }
@@ -134,6 +129,10 @@ ProgramArgs ParseArgs(int argc, char** argv)
 	ret.LatticeSpec.LengthUnit = json["LengthUnit"];
 	ret.LatticeSpec.TimeStep = json["TimeStep"];
 	ret.LatticeSpec.MassUnit = json["MassUnit"];
+
+	ret.LatticeSpec.Tau = json["Tau"];
+
+	ret.LatticeSpec.Gravity = json["Gravity"];
 
 	std::map <std::string, Lattice::BoundaryCondition> DictionaryBC{
 		{"Periodic"  , Lattice::BoundaryCondition::Periodic},

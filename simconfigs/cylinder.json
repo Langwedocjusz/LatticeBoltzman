@@ -1,0 +1,36 @@
+{
+    "NumIterations": 2500,
+    "SaveStep": 50,
+
+    "LatticeSizeX": 128,
+    "LatticeSizeY": 128,
+
+    "LengthUnit": 0.5,
+    "TimeStep": 0.08,
+    "MassUnit": 1.0,
+
+    "Tau": 0.5,
+    "Gravity": 0.001,
+
+    "BoundaryConditions": ["Periodic", "Periodic", "Periodic", "Periodic"],
+    "VonNeumannVelocitiesNormal": [0.0, 0.0, 0.0, 0.0],
+    "DirichletDensities": [0.0, 0.0, 0.0, 0.0],
+
+    "AABBs": [
+        {
+            "Min": [0.0, 0.0],
+            "Max": [5.0, 128.0]
+        },
+        {
+            "Min": [123.0, 0.0],
+            "Max": [128.0, 128.0]
+        }
+    ],
+    
+    "Circles": [
+        {
+            "Position": [64.0, 84.0],
+            "Radius": 10.0
+        }
+    ]
+}

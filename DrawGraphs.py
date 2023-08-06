@@ -2,6 +2,9 @@ import os
 import numpy as np
 import matplotlib.pyplot as plt
 
+PLOT_MAX_DENSITY = 1.0
+PLOT_MAX_VELOCITY = 1.0
+
 def CreateIfNotExists(dir):
     if not os.path.exists(dir):
         os.makedirs(dir)
@@ -38,7 +41,6 @@ for filename in os.listdir(data_dir):
     velx_path    = velx_dir    + '/' + os.path.splitext(filename)[0] + '.png'
     vely_path    = vely_dir    + '/' + os.path.splitext(filename)[0] + '.png'
 
-    Plot2D(densities, density_path, "density", -1, 1)
-    Plot2D(velocities_x, velx_path, "velocity x", -0.1, 0.1)
-    Plot2D(velocities_y, vely_path, "velocity y", -0.1, 0.1)
-    
+    Plot2D(densities, density_path, "density", 0.0, PLOT_MAX_DENSITY)
+    Plot2D(velocities_x, velx_path, "velocity x", -PLOT_MAX_VELOCITY, PLOT_MAX_VELOCITY)
+    Plot2D(velocities_y, vely_path, "velocity y", -PLOT_MAX_VELOCITY, PLOT_MAX_VELOCITY)

@@ -10,20 +10,21 @@
 
 struct Node {
 	//Distribution Weights:
-	std::array<double, 9> Weights{0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0};
-	std::array<double, 9> TmpWeights{0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0};
+	std::array<double, 9> Weights{4.0/9.0, 1.0/9.0, 1.0/9.0, 1.0/9.0, 1.0/9.0, 1.0/36.0, 1.0/36.0, 1.0/36.0, 1.0/36.0};
+	std::array<double, 9> TmpWeights{4.0/9.0, 1.0/9.0, 1.0/9.0, 1.0/9.0, 1.0/9.0, 1.0/36.0, 1.0/36.0, 1.0/36.0, 1.0/36.0 };
 
 	//Macroscopic Quantities:
-	double Density{ 0.0 };
+	double Density{ 1.0 };
 	Utils::Vec2 Velocity = Utils::Vec2{0.0, 0.0};
 	//Solid nodes are excluded from dynamics simulation
 	bool IsSolid = false, IsSolidInterior = false;
 
 	//Recalculates macroscopic denisty and velocity
-	void UpdateMacroscopic();
+	void UpdateMacroscopic(double base_speed);
 
 	//Calculates equlibrium weight in direction labeled by 'idx'
-	double Equlibrium(double base_speed, uint32_t idx);
+	//Includes the action of external force 'F', which also requires access to relaxation time 'tau'
+	double Equlibrium(double base_speed, uint32_t idx, double tau, Utils::Vec2 F);
 
 	//Velocities in 9 base directions (zero, four axis aligned, four diagonal)
 	static constexpr std::array<Utils::Vec2, 9> s_BaseVelocities{
@@ -58,6 +59,11 @@ public:
 		double TimeStep;   //[s]
 		double MassUnit;   //[kg]
 
+		//Viscosity parameter
+		double Tau = 1.0;
+
+		double Gravity;
+
 		std::array<Lattice::BoundaryCondition, 4> BoundaryConditions;
 
 		//We assume components tangent to the boundary are zero
@@ -79,12 +85,15 @@ public:
 	void Serialize(std::filesystem::path filepath);
 
 private:
+	void UpdateMacroscopic();
+	void StreamingStep();
+	void CollisionStep();
+	void HandleBoundaries();
 	void HandleBoundary(Boundary boundary);
+	void Bounceback();
 
 	Specification m_Spec;
 
-	//Viscosity parameter in lu^2 / ts units
-	double m_Tau = 1.0;
 	//1 lattice (length) unit / time step (initialized in the constructor)
 	double m_BaseSpeed;
 

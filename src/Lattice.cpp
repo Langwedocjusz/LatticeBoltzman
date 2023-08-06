@@ -1,37 +1,42 @@
 #include "Lattice.h"
 
 #include <iostream>
+#include <iomanip>
 #include <fstream>
 #include <stdexcept>
 
 using namespace Utils;
 
-void Node::UpdateMacroscopic()
+void Node::UpdateMacroscopic(double base_speed)
 {
-	Density = 0.0;
-	Velocity = Vec2{ 0.0, 0.0 };
-
 	//Macroscopic density is the sum of all weights
-	for (const auto& weight : Weights)
+	Density = 0.0;
+
+	for (const auto& weight : TmpWeights)
 	{
 		Density += weight;
 	}
 
 	//Do not attempt to calculate velocity if density is zero, as that is ill defined
-	if (!(Density > 0.0)) return;
+	if (Density <= 0.0)
+	{
+		throw std::runtime_error("Numerical error: density reached non-positive value.");
+	}
 
 	//Macroscopic velocity is the weighted average of base velocities
-	for (size_t i = 0; i < Weights.size(); i++)
+	Velocity = Vec2{ 0.0, 0.0 };
+
+	for (size_t i = 0; i < TmpWeights.size(); i++)
 	{
-		Velocity.x += Weights[i] * s_BaseVelocities[i].x;
-		Velocity.y += Weights[i] * s_BaseVelocities[i].y;
+		Velocity.x += TmpWeights[i] * base_speed * s_BaseVelocities[i].x;
+		Velocity.y += TmpWeights[i] * base_speed * s_BaseVelocities[i].y;
 	}
 
 	Velocity.x /= Density;
 	Velocity.y /= Density;
 }
 
-double Node::Equlibrium(double base_speed, uint32_t idx)
+double Node::Equlibrium(double base_speed, uint32_t idx, double tau, Utils::Vec2 F)
 {
 	//Formula for local equilibrium weights as seen in equation (17) in
 	//"Lattice Boltzman Modelling An Introduction for Geoscientists and Engineers"
@@ -43,12 +48,15 @@ double Node::Equlibrium(double base_speed, uint32_t idx)
 		1.0 / 36.0, 1.0 / 36.0, 1.0 / 36.0, 1.0 / 36.0,
 	};
 
-	const Vec2 e = s_BaseVelocities[idx];
+	const Vec2 e = base_speed * s_BaseVelocities[idx];
 
-	const double eDotU = dot(e, Velocity);
-	const double u2 = dot(Velocity, Velocity);
+	//Adjusting velocity used in equilibrium calculation to include forces
+	const Vec2 u = Velocity + (tau/Density)*F;
 
-	const double c2 = base_speed * base_speed;
+	const double eDotU = dot(e, u);
+	const double u2 = dot(u, u);
+
+	const double c2 = base_speed*base_speed;
 	const double c4 = c2 * c2;
 
 	return weights[idx] * Density *
@@ -61,60 +69,12 @@ Lattice::Lattice(Specification spec)
 	m_Nodes.resize(m_Spec.sizeX, std::vector<Node>(m_Spec.sizeY));
 
 	//Convert tau from lu^2 / dt units:
-	m_Tau *= m_Spec.LengthUnit * m_Spec.LengthUnit * m_Spec.LengthUnit / m_Spec.TimeStep;
+	m_Spec.Tau *= m_Spec.LengthUnit * m_Spec.LengthUnit / m_Spec.TimeStep;
 }
 
 Lattice::~Lattice()
 {
 
-}
-
-void Lattice::LoadScene(const Scene& scene)
-{
-	//Test against the scene, if a node is inside some shape mark it as solid
-	for (size_t idx = 0; idx < m_Nodes.size(); idx++)
-	{
-		for (size_t idy = 0; idy < m_Nodes[0].size(); idy++)
-		{
-			const auto& lu = m_Spec.LengthUnit;
-
-			Vec2 pos{ 
-				lu * static_cast<double>(idx), 
-				lu * static_cast<double>(idy) 
-			};
-
-			m_Nodes[idx][idy].IsSolid = scene.IsInside(pos);
-		}
-	}
-
-	//If a node and all its neighbors are solid mark it as solid_interior
-	const auto sizeX = m_Nodes.size();
-	const auto sizeY = m_Nodes[0].size();
-
-	for (size_t idx = 0; idx < sizeX; idx++)
-	{
-		const size_t l = (idx != 0) ? idx - 1 : sizeX - 1;
-		const size_t r = (idx != sizeX - 1) ? idx + 1 : 0;
-
-		for (size_t idy = 0; idy < sizeY; idy++)
-		{
-			const size_t u = (idy != sizeY - 1) ? idy + 1 : 0;
-			const size_t d = (idy != 0) ? idy - 1 : sizeY - 1;
-
-			bool is_solid_interior = m_Nodes[idx][idy].IsSolid;
-
-			is_solid_interior = is_solid_interior && m_Nodes[l][idy].IsSolid;
-			is_solid_interior = is_solid_interior && m_Nodes[r][idy].IsSolid;
-			is_solid_interior = is_solid_interior && m_Nodes[idx][u].IsSolid;
-			is_solid_interior = is_solid_interior && m_Nodes[idx][d].IsSolid;
-			is_solid_interior = is_solid_interior && m_Nodes[l][u].IsSolid;
-			is_solid_interior = is_solid_interior && m_Nodes[r][d].IsSolid;
-			is_solid_interior = is_solid_interior && m_Nodes[r][u].IsSolid;
-			is_solid_interior = is_solid_interior && m_Nodes[l][d].IsSolid;
-
-			m_Nodes[idx][idy].IsSolidInterior = is_solid_interior;
-		}
-	}
 }
 
 void Lattice::InitFlow(void func(size_t, size_t, Node&))
@@ -134,27 +94,52 @@ void Lattice::InitFlow(void func(size_t, size_t, Node&))
 
 void Lattice::Update()
 {
+	//UpdateMacroscopic();
+	//StreamingStep();
+	//HandleBoundaries();
+	//CollisionStep();
+
+	UpdateMacroscopic();
+	CollisionStep();
+	StreamingStep();
+	Bounceback();
+	HandleBoundaries();
+}
+
+void Lattice::UpdateMacroscopic()
+{
+	for (size_t i = 0; i < m_Spec.sizeX; i++)
+	{
+		for (size_t j = 0; j < m_Spec.sizeY; j++)
+		{
+			auto& node = m_Nodes[i][j];
+
+			if (node.IsSolid) continue;
+
+			node.UpdateMacroscopic(m_BaseSpeed);
+		}
+	}
+}
+
+void Lattice::StreamingStep()
+{
 	const auto& sizeX = m_Spec.sizeX;
 	const auto& sizeY = m_Spec.sizeY;
 
-	//Streaming step
 	for (size_t i = 0; i < sizeX; i++)
 	{
 		//Neighbor node ids: left, right
-		const size_t l = (i != 0)         ? i - 1 : sizeX - 1;
-		const size_t r = (i != sizeX - 1) ? i + 1 : 0;          
+		const size_t l = (i != 0) ? i - 1 : sizeX - 1;
+		const size_t r = (i != sizeX - 1) ? i + 1 : 0;
 
 		for (size_t j = 0; j < sizeY; j++)
 		{
 			//Skip solid interior nodes
 			if (m_Nodes[i][j].IsSolidInterior) continue;
 
-			//Update Macroscopic values
-			m_Nodes[i][j].UpdateMacroscopic();
-
 			//Neightbor node ids: up, down
 			const size_t u = (j != sizeY - 1) ? j + 1 : 0;
-			const size_t d = (j != 0)         ? j - 1 : sizeY - 1;
+			const size_t d = (j != 0) ? j - 1 : sizeY - 1;
 
 			//Uses following convention from "Lattice Boltzman Modelling 
 			// An Introduction for Geoscientists and Engineers":
@@ -175,31 +160,63 @@ void Lattice::Update()
 			m_Nodes[r][d].TmpWeights[8] = m_Nodes[i][j].Weights[8];
 		}
 	}
+}
 
-	//Consider boundary conditions
-	for (int i = 0; i < 4; i++)
+void Lattice::CollisionStep()
+{
+	for (size_t i = 0; i < m_Spec.sizeX; i++)
 	{
-		const auto& boundary_condition = m_Spec.BoundaryConditions[i];
-
-		//Periodic conditions need no further handling
-		if (boundary_condition == BoundaryCondition::Periodic)
-			continue;
-
-		HandleBoundary(static_cast<Boundary>(i));
-	}
-
-	//Collision step
-	for (size_t i = 0; i < m_Nodes.size(); i++)
-	{
-		for (size_t j = 0; j < m_Nodes[0].size(); j++)
+		for (size_t j = 0; j < m_Spec.sizeY; j++)
 		{
 			auto& node = m_Nodes[i][j];
 
 			//Skip solid interior nodes
-			if (node.IsSolidInterior) continue;
+			//if (node.IsSolidInterior) continue;
+			if (node.IsSolid) continue;
 
 			//Perform bounceback on solid boundary nodes:
-			if (node.IsSolid)
+			//if (node.IsSolid)
+			//{
+			//	double tmp;
+			//	auto& fij = node.TmpWeights;
+			//
+			//	tmp = fij[1]; fij[1] = fij[3]; fij[3] = tmp;
+			//	tmp = fij[2]; fij[2] = fij[4]; fij[4] = tmp;
+			//	tmp = fij[5]; fij[5] = fij[7]; fij[7] = tmp;
+			//	tmp = fij[6]; fij[6] = fij[8]; fij[8] = tmp;
+			//
+			//	node.Weights = node.TmpWeights;
+			//}
+
+			//Perform relaxation towards local equilibrium otherwise
+			//else
+			{
+				for (size_t a = 0; a < 9; a++)
+				{
+					const Utils::Vec2 gravity{
+						0.0, -node.Density * m_Spec.MassUnit * m_Spec.Gravity
+					};
+
+					const auto f_tmp = node.TmpWeights[a];
+					const auto f_eq = node.Equlibrium(m_BaseSpeed, a, m_Spec.Tau, gravity);
+
+					node.Weights[a] = f_tmp - (f_tmp - f_eq) / m_Spec.Tau;
+				}
+			}
+
+		}
+	}
+}
+
+void Lattice::Bounceback()
+{
+	for (size_t i = 0; i < m_Spec.sizeX; i++)
+	{
+		for (size_t j = 0; j < m_Spec.sizeY; j++)
+		{
+			auto& node = m_Nodes[i][j];
+
+			if (node.IsSolid && (!node.IsSolidInterior))
 			{
 				double tmp;
 				auto& fij = node.TmpWeights;
@@ -208,23 +225,22 @@ void Lattice::Update()
 				tmp = fij[2]; fij[2] = fij[4]; fij[4] = tmp;
 				tmp = fij[5]; fij[5] = fij[7]; fij[7] = tmp;
 				tmp = fij[6]; fij[6] = fij[8]; fij[8] = tmp;
-
+				
 				node.Weights = node.TmpWeights;
 			}
-
-			//Perform relaxation towards local equilibrium otherwise
-			else
-			{
-				for (size_t a = 0; a < 9; a++)
-				{
-					const auto f_tmp = node.TmpWeights[a];
-					const auto f_eq = node.Equlibrium(m_BaseSpeed, a);
-
-					node.Weights[a] = f_tmp - (f_tmp - f_eq) / m_Tau;
-				}
-			}
-
 		}
+	}
+}
+
+void Lattice::HandleBoundaries()
+{
+	for (int i = 0; i < 4; i++)
+	{
+		//Periodic conditions need no further handling
+		if (m_Spec.BoundaryConditions[i] == BoundaryCondition::Periodic)
+			continue;
+
+		HandleBoundary(static_cast<Boundary>(i));
 	}
 }
 
@@ -271,14 +287,16 @@ void Lattice::HandleBoundary(Boundary boundary)
 		switch (boundary)
 		{
 			case Up:    {node = &m_Nodes[i][sizeY - 1]; break;}
-			case Down:  {node = &m_Nodes[i][0];		 break;}
-			case Left:  {node = &m_Nodes[0][i];		 break;}
+			case Down:  {node = &m_Nodes[i][0];		    break;}
+			case Left:  {node = &m_Nodes[0][i];		    break;}
 			case Right: {node = &m_Nodes[sizeX - 1][i]; break;}
 		}
 		
 		
 		if (node)
 		{
+			if (node->IsSolid) continue;
+
 			auto& fi = (*node).TmpWeights;
 
 			const double sum_middle = fi[middle[0]] + fi[middle[1]] + fi[middle[2]];
@@ -327,6 +345,53 @@ void Lattice::HandleBoundary(Boundary boundary)
 	}
 }
 
+void Lattice::LoadScene(const Scene& scene)
+{
+	//Test against the scene, if a node is inside some shape mark it as solid
+	for (size_t idx = 0; idx < m_Nodes.size(); idx++)
+	{
+		for (size_t idy = 0; idy < m_Nodes[0].size(); idy++)
+		{
+			const auto& lu = m_Spec.LengthUnit;
+
+			Vec2 pos{
+				static_cast<double>(idx),
+				static_cast<double>(idy)
+			};
+
+			m_Nodes[idx][idy].IsSolid = scene.IsInside(pos);
+		}
+	}
+
+	//If a node and all its neighbors are solid mark it as solid_interior
+	const auto sizeX = m_Nodes.size();
+	const auto sizeY = m_Nodes[0].size();
+
+	for (size_t idx = 0; idx < sizeX; idx++)
+	{
+		const size_t l = (idx != 0) ? idx - 1 : sizeX - 1;
+		const size_t r = (idx != sizeX - 1) ? idx + 1 : 0;
+
+		for (size_t idy = 0; idy < sizeY; idy++)
+		{
+			const size_t u = (idy != sizeY - 1) ? idy + 1 : 0;
+			const size_t d = (idy != 0) ? idy - 1 : sizeY - 1;
+
+			bool is_solid_interior = m_Nodes[idx][idy].IsSolid;
+
+			is_solid_interior = is_solid_interior && m_Nodes[l][idy].IsSolid;
+			is_solid_interior = is_solid_interior && m_Nodes[r][idy].IsSolid;
+			is_solid_interior = is_solid_interior && m_Nodes[idx][u].IsSolid;
+			is_solid_interior = is_solid_interior && m_Nodes[idx][d].IsSolid;
+			is_solid_interior = is_solid_interior && m_Nodes[l][u].IsSolid;
+			is_solid_interior = is_solid_interior && m_Nodes[r][d].IsSolid;
+			is_solid_interior = is_solid_interior && m_Nodes[r][u].IsSolid;
+			is_solid_interior = is_solid_interior && m_Nodes[l][d].IsSolid;
+
+			m_Nodes[idx][idy].IsSolidInterior = is_solid_interior;
+		}
+	}
+}
 
 void Lattice::Serialize(std::filesystem::path filepath)
 {
@@ -338,7 +403,9 @@ void Lattice::Serialize(std::filesystem::path filepath)
 		{
 			for (const auto& node : row)
 			{
-				output << node.Density << " " << node.Velocity.x << " " << node.Velocity.y << " ";
+				output << std::fixed << std::setprecision(8) << node.Density    << " ";
+				output << std::fixed << std::setprecision(8) << node.Velocity.x << " ";
+				output << std::fixed << std::setprecision(8) << node.Velocity.y << " ";
 			}
 
 			output << '\n';

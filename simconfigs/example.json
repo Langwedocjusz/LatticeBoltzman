@@ -9,9 +9,13 @@
     "TimeStep": 0.02,
     "MassUnit": 1.0,
 
+    "Tau": 1.0,
+
+    "Gravity": 0.0,
+
     "BoundaryConditions": ["VonNeumann", "Periodic", "VonNeumann", "Periodic"],
-    "VonNeumannVelocitiesNormal": [0.09, 0.0, 0.09, 0.0],
-    "DirichletDensities": [0.5, 2.0, 1.5, 2.0],
+    "VonNeumannVelocitiesNormal": [0.0018, 0.0, 0.0018, 0.0],
+    "DirichletDensities": [0.0, 0.0, 0.0, 0.0],
 
     "AABBs": [
         {

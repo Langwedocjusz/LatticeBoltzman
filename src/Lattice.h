@@ -8,6 +8,8 @@
 #include "Utils.h"
 #include "Scene.h"
 
+#define MULTITHREADED
+
 struct Node {
 	//Distribution Weights, initialized to equilibrium distribution:
 	std::array<double, 9> Weights{4.0/9.0, 1.0/9.0, 1.0/9.0, 1.0/9.0, 1.0/9.0, 1.0/36.0, 1.0/36.0, 1.0/36.0, 1.0/36.0};
@@ -103,4 +105,8 @@ private:
 	double m_Omega;
 
 	std::vector<std::vector<Node>> m_Nodes;
+
+#ifdef MULTITHREADED
+	std::vector<size_t> m_Indices;
+#endif
 };

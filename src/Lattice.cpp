@@ -4,6 +4,7 @@
 #include <iomanip>
 #include <fstream>
 #include <stdexcept>
+#include <execution>
 
 using namespace Utils;
 
@@ -74,6 +75,17 @@ Lattice::Lattice(Specification spec)
 {
 	m_Nodes.resize(m_Spec.sizeX, std::vector<Node>(m_Spec.sizeY));
 
+#ifdef MULTITHREADED
+	
+	m_Indices.resize(m_Spec.sizeX);
+
+	for (size_t i = 0; i < m_Spec.sizeX; i++)
+	{
+			m_Indices.push_back(i);
+	}
+
+#endif
+
 	//Convert tau from lu^2 / dt units:
 	const double tau = m_Spec.Tau * m_Spec.LengthUnit * m_Spec.LengthUnit / m_Spec.TimeStep;
 	//This is the same as above, divided by base velocity
@@ -96,6 +108,20 @@ void Lattice::Update()
 
 void Lattice::UpdateMacroscopic()
 {
+#ifdef MULTITHREADED
+
+	std::for_each(std::execution::par, m_Indices.begin(), m_Indices.end(), [this](size_t i) {
+		for (size_t j = 0; j < m_Spec.sizeY; j++)
+		{
+			auto& node = m_Nodes[i][j];
+
+			if (node.IsSolid) continue;
+
+			node.UpdateMacroscopic();
+		}
+	});
+
+#else
 	for (size_t i = 0; i < m_Spec.sizeX; i++)
 	{
 		for (size_t j = 0; j < m_Spec.sizeY; j++)
@@ -107,10 +133,52 @@ void Lattice::UpdateMacroscopic()
 			node.UpdateMacroscopic();
 		}
 	}
+
+#endif
 }
 
 void Lattice::StreamingStep()
 {
+#ifdef MULTITHREADED
+
+	std::for_each(std::execution::par, m_Indices.begin(), m_Indices.end(), [this](size_t i) {
+		const auto& sizeX = m_Spec.sizeX;
+		const auto& sizeY = m_Spec.sizeY;
+
+		//Neighbor node ids: left, right
+		const size_t l = (i != 0) ? i - 1 : sizeX - 1;
+		const size_t r = (i != sizeX - 1) ? i + 1 : 0;
+
+		for (size_t j = 0; j < sizeY; j++)
+		{
+			//Skip solid interior nodes
+			if (m_Nodes[i][j].IsSolidInterior) continue;
+
+			//Neightbor node ids: up, down
+			const size_t u = (j != sizeY - 1) ? j + 1 : 0;
+			const size_t d = (j != 0) ? j - 1 : sizeY - 1;
+
+			//Uses following convention from "Lattice Boltzman Modelling 
+			// An Introduction for Geoscientists and Engineers":
+			//   6 -- 2 -- 5
+			//   |    |    |
+			//   3 -- 0 -- 1
+			//   |    |    |
+			//   7 -- 4 -- 8
+
+			m_Nodes[i][j].TmpWeights[0] = m_Nodes[i][j].Weights[0];
+			m_Nodes[r][j].TmpWeights[1] = m_Nodes[i][j].Weights[1];
+			m_Nodes[i][u].TmpWeights[2] = m_Nodes[i][j].Weights[2];
+			m_Nodes[l][j].TmpWeights[3] = m_Nodes[i][j].Weights[3];
+			m_Nodes[i][d].TmpWeights[4] = m_Nodes[i][j].Weights[4];
+			m_Nodes[r][u].TmpWeights[5] = m_Nodes[i][j].Weights[5];
+			m_Nodes[l][u].TmpWeights[6] = m_Nodes[i][j].Weights[6];
+			m_Nodes[l][d].TmpWeights[7] = m_Nodes[i][j].Weights[7];
+			m_Nodes[r][d].TmpWeights[8] = m_Nodes[i][j].Weights[8];
+		}
+	});
+
+#else
 	const auto& sizeX = m_Spec.sizeX;
 	const auto& sizeY = m_Spec.sizeY;
 
@@ -148,10 +216,59 @@ void Lattice::StreamingStep()
 			m_Nodes[r][d].TmpWeights[8] = m_Nodes[i][j].Weights[8];
 		}
 	}
+
+#endif
 }
 
 void Lattice::CollisionAndBounceback()
 {
+#ifdef MULTITHREADED
+	std::for_each(std::execution::par, m_Indices.begin(), m_Indices.end(), [this](size_t i) {
+		for (size_t j = 0; j < m_Spec.sizeY; j++)
+		{
+			auto& node = m_Nodes[i][j];
+
+			//Skip solid interior nodes
+			if (node.IsSolidInterior) continue;
+
+			//Perform bounceback on solid boundary nodes:
+			if (node.IsSolid)
+			{
+				auto& f_in = node.TmpWeights;
+				auto& f_out = node.Weights;
+
+				f_out[0] = f_in[0];
+				f_out[1] = f_in[3];
+				f_out[2] = f_in[4];
+				f_out[3] = f_in[1];
+				f_out[4] = f_in[2];
+				f_out[5] = f_in[7];
+				f_out[6] = f_in[8];
+				f_out[7] = f_in[5];
+				f_out[8] = f_in[6];
+			}
+
+			//Perform relaxation towards local equilibrium otherwise
+			else
+			{
+				for (size_t a = 0; a < 9; a++)
+				{
+					//Relaxation time (in appropriate units, as discussed in equilibrium distribution)
+					//times the force - in this case downwards pointing gravity
+					const double F = node.Density * m_Spec.MassUnit * m_Spec.Gravity;
+					const Utils::Vec2 tauF{ 0.0, -F * m_TauForce };
+
+					const auto f_tmp = node.TmpWeights[a];
+					const auto f_eq = node.Equlibrium(a, tauF);
+
+					node.Weights[a] = f_tmp - m_Omega * (f_tmp - f_eq);
+				}
+			}
+
+		}
+	});
+
+#else
 	for (size_t i = 0; i < m_Spec.sizeX; i++)
 	{
 		for (size_t j = 0; j < m_Spec.sizeY; j++)
@@ -197,6 +314,7 @@ void Lattice::CollisionAndBounceback()
 
 		}
 	}
+#endif
 }
 
 void Lattice::HandleBoundaries()

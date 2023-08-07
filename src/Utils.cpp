@@ -27,3 +27,8 @@ Utils::Vec2 operator*(const double a, const Utils::Vec2 v)
 {
 	return Utils::Vec2{ a * v.x, a * v.y };
 }
+
+Utils::Vec2 operator/(const Utils::Vec2 v, const double a)
+{
+	return Utils::Vec2{v.x/a, v.y/a};
+}

@@ -7,12 +7,12 @@
 
 using namespace Utils;
 
-void Node::UpdateMacroscopic(double base_speed)
+void Node::UpdateMacroscopic()
 {
 	//Macroscopic density is the sum of all weights
 	Density = 0.0;
 
-	for (const auto& weight : TmpWeights)
+	for (const auto& weight : Weights)
 	{
 		Density += weight;
 	}
@@ -23,20 +23,23 @@ void Node::UpdateMacroscopic(double base_speed)
 		throw std::runtime_error("Numerical error: density reached non-positive value.");
 	}
 
+	//Purely for optimization purposes:
+	InvDensity = 1.0 / Density;
+
 	//Macroscopic velocity is the weighted average of base velocities
 	Velocity = Vec2{ 0.0, 0.0 };
 
-	for (size_t i = 0; i < TmpWeights.size(); i++)
+	for (size_t i = 0; i < Weights.size(); i++)
 	{
-		Velocity.x += TmpWeights[i] * base_speed * s_BaseVelocities[i].x;
-		Velocity.y += TmpWeights[i] * base_speed * s_BaseVelocities[i].y;
+		Velocity.x += Weights[i] * s_BaseVelocities[i].x;
+		Velocity.y += Weights[i] * s_BaseVelocities[i].y;
 	}
 
-	Velocity.x /= Density;
-	Velocity.y /= Density;
+	Velocity.x *= InvDensity;
+	Velocity.y *= InvDensity;
 }
 
-double Node::Equlibrium(double base_speed, uint32_t idx, double tau, Utils::Vec2 F)
+double Node::Equlibrium(uint32_t idx, Utils::Vec2 tauF)
 {
 	//Formula for local equilibrium weights as seen in equation (17) in
 	//"Lattice Boltzman Modelling An Introduction for Geoscientists and Engineers"
@@ -48,19 +51,22 @@ double Node::Equlibrium(double base_speed, uint32_t idx, double tau, Utils::Vec2
 		1.0 / 36.0, 1.0 / 36.0, 1.0 / 36.0, 1.0 / 36.0,
 	};
 
-	const Vec2 e = base_speed * s_BaseVelocities[idx];
+	const Vec2 e = s_BaseVelocities[idx];
 
 	//Adjusting velocity used in equilibrium calculation to include forces
-	const Vec2 u = Velocity + (tau/Density)*F;
+	//Care needs to be taken to insure that tau used here is in units corresponding
+	//to our base velocities normalization
+	const Vec2 u = Velocity + InvDensity*tauF;
 
 	const double eDotU = dot(e, u);
 	const double u2 = dot(u, u);
 
-	const double c2 = base_speed*base_speed;
-	const double c4 = c2 * c2;
+	//Formula in the book contained divisions by characteristic velocity c
+	//They can be avoided by normalizing base velocities to lengths {1, \sqrt{2}}
+	//Instead of {c, \sqrt{2} c}:
 
 	return weights[idx] * Density *
-		(1.0 + 3.0 * eDotU / c2 + 4.5 * (eDotU*eDotU) / c4 - 1.5 * u2 /c2);
+		(1.0 + 3.0 * eDotU + 4.5 * (eDotU*eDotU) - 1.5 * u2);
 }
 
 Lattice::Lattice(Specification spec)
@@ -69,7 +75,10 @@ Lattice::Lattice(Specification spec)
 	m_Nodes.resize(m_Spec.sizeX, std::vector<Node>(m_Spec.sizeY));
 
 	//Convert tau from lu^2 / dt units:
-	m_Spec.Tau *= m_Spec.LengthUnit * m_Spec.LengthUnit / m_Spec.TimeStep;
+	const double tau = m_Spec.Tau * m_Spec.LengthUnit * m_Spec.LengthUnit / m_Spec.TimeStep;
+	//This is the same as above, divided by base velocity
+	m_TauForce = m_Spec.Tau * m_Spec.LengthUnit;
+	m_Omega = 1.0 / tau;
 }
 
 Lattice::~Lattice()
@@ -77,33 +86,12 @@ Lattice::~Lattice()
 
 }
 
-void Lattice::InitFlow(void func(size_t, size_t, Node&))
-{
-	for (size_t idx = 0; idx < m_Nodes.size(); idx++)
-	{
-		for (size_t idy = 0; idy < m_Nodes[0].size(); idy++)
-		{
-			auto& node = m_Nodes[idx][idy];
-
-			if (node.IsSolid) continue;
-
-			func(idx, idy, node);
-		}
-	}
-}
-
 void Lattice::Update()
 {
-	//UpdateMacroscopic();
-	//StreamingStep();
-	//HandleBoundaries();
-	//CollisionStep();
-
 	UpdateMacroscopic();
-	CollisionStep();
 	StreamingStep();
-	Bounceback();
 	HandleBoundaries();
+	CollisionAndBounceback();
 }
 
 void Lattice::UpdateMacroscopic()
@@ -116,7 +104,7 @@ void Lattice::UpdateMacroscopic()
 
 			if (node.IsSolid) continue;
 
-			node.UpdateMacroscopic(m_BaseSpeed);
+			node.UpdateMacroscopic();
 		}
 	}
 }
@@ -162,7 +150,7 @@ void Lattice::StreamingStep()
 	}
 }
 
-void Lattice::CollisionStep()
+void Lattice::CollisionAndBounceback()
 {
 	for (size_t i = 0; i < m_Spec.sizeX; i++)
 	{
@@ -171,63 +159,42 @@ void Lattice::CollisionStep()
 			auto& node = m_Nodes[i][j];
 
 			//Skip solid interior nodes
-			//if (node.IsSolidInterior) continue;
-			if (node.IsSolid) continue;
+			if (node.IsSolidInterior) continue;
 
 			//Perform bounceback on solid boundary nodes:
-			//if (node.IsSolid)
-			//{
-			//	double tmp;
-			//	auto& fij = node.TmpWeights;
-			//
-			//	tmp = fij[1]; fij[1] = fij[3]; fij[3] = tmp;
-			//	tmp = fij[2]; fij[2] = fij[4]; fij[4] = tmp;
-			//	tmp = fij[5]; fij[5] = fij[7]; fij[7] = tmp;
-			//	tmp = fij[6]; fij[6] = fij[8]; fij[8] = tmp;
-			//
-			//	node.Weights = node.TmpWeights;
-			//}
+			if (node.IsSolid)
+			{
+				auto& f_in = node.TmpWeights;
+				auto& f_out = node.Weights;
+
+				f_out[0] = f_in[0];
+				f_out[1] = f_in[3];
+				f_out[2] = f_in[4];
+				f_out[3] = f_in[1];
+				f_out[4] = f_in[2];
+				f_out[5] = f_in[7];
+				f_out[6] = f_in[8];
+				f_out[7] = f_in[5];
+				f_out[8] = f_in[6];
+			}
 
 			//Perform relaxation towards local equilibrium otherwise
-			//else
+			else
 			{
 				for (size_t a = 0; a < 9; a++)
 				{
-					const Utils::Vec2 gravity{
-						0.0, -node.Density * m_Spec.MassUnit * m_Spec.Gravity
-					};
+					//Relaxation time (in appropriate units, as discussed in equilibrium distribution)
+					//times the force - in this case downwards pointing gravity
+					const double F = node.Density * m_Spec.MassUnit * m_Spec.Gravity;
+					const Utils::Vec2 tauF{0.0, - F * m_TauForce};
 
 					const auto f_tmp = node.TmpWeights[a];
-					const auto f_eq = node.Equlibrium(m_BaseSpeed, a, m_Spec.Tau, gravity);
+					const auto f_eq = node.Equlibrium(a, tauF);
 
-					node.Weights[a] = f_tmp - (f_tmp - f_eq) / m_Spec.Tau;
+					node.Weights[a] = f_tmp - m_Omega * (f_tmp - f_eq);
 				}
 			}
 
-		}
-	}
-}
-
-void Lattice::Bounceback()
-{
-	for (size_t i = 0; i < m_Spec.sizeX; i++)
-	{
-		for (size_t j = 0; j < m_Spec.sizeY; j++)
-		{
-			auto& node = m_Nodes[i][j];
-
-			if (node.IsSolid && (!node.IsSolidInterior))
-			{
-				double tmp;
-				auto& fij = node.TmpWeights;
-				
-				tmp = fij[1]; fij[1] = fij[3]; fij[3] = tmp;
-				tmp = fij[2]; fij[2] = fij[4]; fij[4] = tmp;
-				tmp = fij[5]; fij[5] = fij[7]; fij[7] = tmp;
-				tmp = fij[6]; fij[6] = fij[8]; fij[8] = tmp;
-				
-				node.Weights = node.TmpWeights;
-			}
 		}
 	}
 }
@@ -254,9 +221,9 @@ void Lattice::HandleBoundary(Boundary boundary)
 	const auto& sizeY = m_Spec.sizeY;
 
 	//Determine iteration range
-	bool horizontal = (boundary == Up || boundary == Down);
+	bool horizontal_boundary = (boundary == Up || boundary == Down);
 
-	size_t max_id = horizontal ? sizeX : sizeY;
+	size_t max_id = horizontal_boundary ? sizeX : sizeY;
 
 	//Select appropriate indices
 	typedef std::array<size_t, 3> triplet;
@@ -352,8 +319,6 @@ void Lattice::LoadScene(const Scene& scene)
 	{
 		for (size_t idy = 0; idy < m_Nodes[0].size(); idy++)
 		{
-			const auto& lu = m_Spec.LengthUnit;
-
 			Vec2 pos{
 				static_cast<double>(idx),
 				static_cast<double>(idy)
@@ -393,6 +358,21 @@ void Lattice::LoadScene(const Scene& scene)
 	}
 }
 
+void Lattice::InitFlow(void func(size_t, size_t, Node&))
+{
+	for (size_t idx = 0; idx < m_Nodes.size(); idx++)
+	{
+		for (size_t idy = 0; idy < m_Nodes[0].size(); idy++)
+		{
+			auto& node = m_Nodes[idx][idy];
+
+			if (node.IsSolid) continue;
+
+			func(idx, idy, node);
+		}
+	}
+}
+
 void Lattice::Serialize(std::filesystem::path filepath)
 {
 	std::ofstream output(filepath, std::ios::trunc);
@@ -404,8 +384,8 @@ void Lattice::Serialize(std::filesystem::path filepath)
 			for (const auto& node : row)
 			{
 				output << std::fixed << std::setprecision(8) << node.Density    << " ";
-				output << std::fixed << std::setprecision(8) << node.Velocity.x << " ";
-				output << std::fixed << std::setprecision(8) << node.Velocity.y << " ";
+				output << std::fixed << std::setprecision(8) << m_BaseSpeed * node.Velocity.x << " ";
+				output << std::fixed << std::setprecision(8) << m_BaseSpeed * node.Velocity.y << " ";
 			}
 
 			output << '\n';

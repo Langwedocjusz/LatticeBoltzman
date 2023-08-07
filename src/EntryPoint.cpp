@@ -3,6 +3,7 @@
 #include <iostream>
 #include <fstream>
 #include <stdexcept>
+#include <chrono>
 
 #include "nlohmann/json.hpp"
 
@@ -70,6 +71,9 @@ int main(int argc, char** argv)
 
 	try
 	{
+		//Save current time
+		auto start_time = std::chrono::high_resolution_clock::now();
+
 		//Simulate dynamics and save results
 		for (int i = 0; i < args.NumIterations; i++)
 		{
@@ -86,19 +90,26 @@ int main(int argc, char** argv)
 				lattice.Serialize(filepath);
 			}
 		}
+
+		//Compute and print time it took to finish simulation
+		auto end_time = std::chrono::high_resolution_clock::now();
+
+		double time_seconds = std::chrono::duration_cast<std::chrono::nanoseconds>(end_time - start_time).count() * 1e-9;
+
+		std::cout << "Simulation (" << args.NumIterations << " steps) took " << time_seconds << " seconds.\n";
 	}
 
 	catch(std::runtime_error ex)
 	{
 		std::cerr << ex.what() << '\n';
 	}
-	
 
 	return 0;
 }
 
 ProgramArgs ParseArgs(int argc, char** argv)
 {
+	//Check if there is only one argument
 	const std::vector<std::string> args(argv + 1, argv + argc);
 
 	if (args.size() != 1)
@@ -106,6 +117,7 @@ ProgramArgs ParseArgs(int argc, char** argv)
 		throw std::invalid_argument("Incorrect arguments.");
 	}
 
+	//Try to open file, treating argument as a path
 	auto current_path = std::filesystem::current_path();
 	auto filepath = current_path / args[0];
 
@@ -116,6 +128,7 @@ ProgramArgs ParseArgs(int argc, char** argv)
 		throw std::runtime_error("Could not open file: " + filepath.string());
 	}
 
+	//Parse the opened file as a json
 	auto json = nlohmann::json::parse(input);
 
 	ProgramArgs ret;

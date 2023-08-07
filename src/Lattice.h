@@ -9,22 +9,22 @@
 #include "Scene.h"
 
 struct Node {
-	//Distribution Weights:
+	//Distribution Weights, initialized to equilibrium distribution:
 	std::array<double, 9> Weights{4.0/9.0, 1.0/9.0, 1.0/9.0, 1.0/9.0, 1.0/9.0, 1.0/36.0, 1.0/36.0, 1.0/36.0, 1.0/36.0};
 	std::array<double, 9> TmpWeights{4.0/9.0, 1.0/9.0, 1.0/9.0, 1.0/9.0, 1.0/9.0, 1.0/36.0, 1.0/36.0, 1.0/36.0, 1.0/36.0 };
 
 	//Macroscopic Quantities:
-	double Density{ 1.0 };
+	double Density{ 1.0 }, InvDensity{1.0};
 	Utils::Vec2 Velocity = Utils::Vec2{0.0, 0.0};
 	//Solid nodes are excluded from dynamics simulation
 	bool IsSolid = false, IsSolidInterior = false;
 
 	//Recalculates macroscopic denisty and velocity
-	void UpdateMacroscopic(double base_speed);
+	void UpdateMacroscopic();
 
 	//Calculates equlibrium weight in direction labeled by 'idx'
 	//Includes the action of external force 'F', which also requires access to relaxation time 'tau'
-	double Equlibrium(double base_speed, uint32_t idx, double tau, Utils::Vec2 F);
+	double Equlibrium(uint32_t idx, Utils::Vec2 tauF);
 
 	//Velocities in 9 base directions (zero, four axis aligned, four diagonal)
 	static constexpr std::array<Utils::Vec2, 9> s_BaseVelocities{
@@ -59,7 +59,8 @@ public:
 		double TimeStep;   //[s]
 		double MassUnit;   //[kg]
 
-		//Viscosity parameter
+		//Relaxation time parameter, for D2Q9 lattice it is related
+		//to kinematic viscosity via \nu = (\tau - 0.5)/3.0
 		double Tau = 1.0;
 
 		double Gravity;
@@ -77,7 +78,7 @@ public:
 
 	//Sets is_solid flag of all nodes according to a pre-defined scene
 	void LoadScene(const Scene& scene);
-	//Applies func(id_x, id_y, Node&) on all non-solid nodes, to initialize them
+	//Allows initializing node values with an arbitrary function
 	void InitFlow(void func(size_t, size_t, Node&));
 	//Calculate next step of dynamics simulation
 	void Update();
@@ -87,15 +88,19 @@ public:
 private:
 	void UpdateMacroscopic();
 	void StreamingStep();
-	void CollisionStep();
+	void CollisionAndBounceback();
 	void HandleBoundaries();
 	void HandleBoundary(Boundary boundary);
-	void Bounceback();
 
 	Specification m_Spec;
 
-	//1 lattice (length) unit / time step (initialized in the constructor)
+	//1 lattice (length) unit / time step
 	double m_BaseSpeed;
+
+	//Relaxation time parameter in units appropriate for including force influence on equilibrium distribution
+	double m_TauForce;
+	//Inverse of relaxation time in units appropriate for performin relaxation to equilibrium
+	double m_Omega;
 
 	std::vector<std::vector<Node>> m_Nodes;
 };

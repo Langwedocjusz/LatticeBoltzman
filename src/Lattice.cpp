@@ -77,11 +77,11 @@ Lattice::Lattice(Specification spec)
 
 #ifdef MULTITHREADED
 	
-	m_Indices.resize(m_Spec.sizeX);
+	m_Indices.reserve(m_Spec.sizeX);
 
 	for (size_t i = 0; i < m_Spec.sizeX; i++)
 	{
-			m_Indices.push_back(i);
+		m_Indices.push_back(i);
 	}
 
 #endif
@@ -110,11 +110,10 @@ void Lattice::UpdateMacroscopic()
 {
 #ifdef MULTITHREADED
 	std::for_each(std::execution::par, m_Indices.begin(), m_Indices.end(), [this](size_t i) 
-	{
 #else
 	for (size_t i = 0; i < m_Spec.sizeX; i++)
-	{
 #endif
+	{
 		for (size_t j = 0; j < m_Spec.sizeY; j++)
 		{
 			auto& node = m_Nodes[i][j];
@@ -132,13 +131,11 @@ void Lattice::UpdateMacroscopic()
 void Lattice::StreamingStep()
 {
 #ifdef MULTITHREADED
-
 	std::for_each(std::execution::par, m_Indices.begin(), m_Indices.end(), [this](size_t i) 
 	{
 		const auto& sizeX = m_Spec.sizeX;
 		const auto& sizeY = m_Spec.sizeY;
 #else
-
 	const auto& sizeX = m_Spec.sizeX;
 	const auto& sizeY = m_Spec.sizeY;
 
@@ -187,11 +184,10 @@ void Lattice::CollisionAndBounceback()
 {
 #ifdef MULTITHREADED
 	std::for_each(std::execution::par, m_Indices.begin(), m_Indices.end(), [this](size_t i) 
-	{
 #else
 	for (size_t i = 0; i < m_Spec.sizeX; i++)
-	{
 #endif
+	{
 		for (size_t j = 0; j < m_Spec.sizeY; j++)
 		{
 			auto& node = m_Nodes[i][j];

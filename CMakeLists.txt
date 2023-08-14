@@ -39,3 +39,8 @@ source_group(src REGULAR_EXPRESSION "src/*")
 set_property(DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR} PROPERTY VS_STARTUP_PROJECT ${PROJECT_NAME})
 #Set Visual Studio Debugger working directory
 set_property(TARGET ${PROJECT_NAME} PROPERTY VS_DEBUGGER_WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}")
+
+#Need to link agains tbb to make code using parallel for_each work
+#with older g++ versions
+find_package(TBB REQUIRED)
+target_link_libraries(${PROJECT_NAME} PRIVATE TBB::tbb)

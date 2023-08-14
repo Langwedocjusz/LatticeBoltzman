@@ -4,6 +4,7 @@
 #include <iomanip>
 #include <fstream>
 #include <stdexcept>
+#include <algorithm>
 #include <execution>
 
 using namespace Utils;

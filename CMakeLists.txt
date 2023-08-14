@@ -42,5 +42,7 @@ set_property(TARGET ${PROJECT_NAME} PROPERTY VS_DEBUGGER_WORKING_DIRECTORY "${CM
 
 #Need to link agains tbb to make code using parallel for_each work
 #with older g++ versions
-find_package(TBB REQUIRED)
-target_link_libraries(${PROJECT_NAME} PRIVATE TBB::tbb)
+if (NOT WIN32)
+	find_package(TBB REQUIRED)
+	target_link_libraries(${PROJECT_NAME} PRIVATE TBB::tbb)
+endif()
